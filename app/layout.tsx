@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import GlobalShell from "./components/navigation/GlobalShell";
 import Head from "next/head";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,7 +36,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <GlobalShell>{children}</GlobalShell>
+        <TooltipProvider>
+          <GlobalShell>{children}</GlobalShell>
+        </TooltipProvider>
       </body>
     </html>
   );
