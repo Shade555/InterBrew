@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 export function useSpeech(onTextExtracted) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
+  const speakingRef = useRef(false);
 
   useEffect(() => {
     // Check for browser support
@@ -46,19 +47,45 @@ export function useSpeech(onTextExtracted) {
   const speak = (text) => {
     return new Promise((resolve, reject) => {
       try {
+        if (!window.speechSynthesis) {
+          return reject(new Error('SpeechSynthesis API not available'));
+        }
         // Cancel any ongoing speech before starting a new one
-        window.speechSynthesis.cancel();
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+        speakingRef.current = true;
         const utterance = new SpeechSynthesisUtterance(text);
         // Optional: tweak voice settings here (pitch, rate, specific voices)
         utterance.rate = 1.0;
-        utterance.onend = () => resolve();
-        utterance.onerror = (e) => reject(e);
-        window.speechSynthesis.speak(utterance);
+        utterance.onend = () => {
+          speakingRef.current = false;
+          resolve();
+        };
+        utterance.onerror = (ev) => {
+          speakingRef.current = false;
+          // Normalize to an Error with useful text so callers get readable messages
+          const msg = (ev && (ev.error || ev.type)) ? String(ev.error || ev.type) : 'unknown speech synthesis error';
+          reject(new Error('SpeechSynthesisUtterance error: ' + msg));
+        };
+        try {
+          window.speechSynthesis.speak(utterance);
+        } catch (e) {
+          speakingRef.current = false;
+          reject(new Error('speechSynthesis.speak threw: ' + (e?.message ?? e)));
+        }
       } catch (e) {
         reject(e);
       }
     });
   };
 
-  return { isListening, startListening, stopListening, speak };
+  const stopSpeaking = () => {
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {
+      // ignore
+    }
+    speakingRef.current = false;
+  };
+
+  return { isListening, startListening, stopListening, speak, stopSpeaking };
 }

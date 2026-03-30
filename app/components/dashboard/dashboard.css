@@ -71,7 +71,8 @@ body::-webkit-scrollbar,
 
 /* Recommended collection card styles: black bg with backdrop and white outline */
 .recommended-card {
-  background-color: rgba(0, 0, 0, 0.6);
+  /* Use explicit solid dark background per design request */
+  background-color: rgb(20, 20, 20);
   -webkit-backdrop-filter: blur(6px) saturate(120%);
   backdrop-filter: blur(6px) saturate(120%);
   border: 1px solid rgba(255, 255, 255, 0.18);
@@ -86,3 +87,44 @@ body::-webkit-scrollbar,
 .card-outline {
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
+
+/* Hover overlay used for collection cards in the dashboard */
+.dashboard-collection-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1.5rem;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+  border-radius: 0.75rem; /* match rounded-xl */
+  transition: opacity 200ms ease;
+}
+
+/* When the parent group is hovered make overlay visible and interactive */
+.group:hover .dashboard-collection-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Card and column background tokens using color-mix in oklab with rgb fallback */
+:root {
+  /* Primary card background color (use plain rgb as requested) */
+  --card-fallback: rgb(20, 20, 20);
+}
+
+.card-bg {
+  /* Use explicit solid dark background only (no color-mix overlay) */
+  background-color: rgb(20, 20, 20);
+}
+
+.col-bg {
+  /* Two-column background: use solid rgb(20,20,20) as primary color */
+  background-color: rgb(20, 20, 20);
+}
+

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import tryIncrementStreak from "../../../lib/streak";
 import Scenarios from "../../components/scenario/scenarios";
 import Content from "../../components/scenario/content";
 import Modules from "../../components/scenario/modules";
@@ -37,6 +38,8 @@ export default function ScenarioPracticePage() {
                         },
                         { onConflict: "user_id,module_id" },
                       );
+                      // increment daily streak once per day when a module is completed
+                      try { await tryIncrementStreak(); } catch (e) { /* ignore */ }
                     }
                   } catch (err) {
                     console.warn(

@@ -2,6 +2,18 @@
 import { useState, useEffect, useRef } from "react";
 import { useSpeech } from "./useSpeech";
 import { supabase } from "../../../lib/supabaseClient";
+import tryIncrementStreak from "../../../lib/streak";
+
+  // helper to log TTS errors but silently ignore cancellations/interrupts
+  function logTtsError(e) {
+    try {
+      const msg = e?.message ?? String(e);
+      if (/interrupt|interrupted|cancel|aborted?/i.test(msg)) return;
+      console.error("TTS error:", msg);
+    } catch (err) {
+      console.error("TTS error:", err);
+    }
+  }
 
 export default function MockInterviewPanel({ difficulty, onClose, topic }) {
   const [history, setHistory] = useState([]);
@@ -12,6 +24,7 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
   const systemPromptRef = useRef(null);
   const [started, setStarted] = useState(false);
   const [favAdded, setFavAdded] = useState([]);
+  const awaitingCloseRef = useRef(false);
 
   async function addToFavourites(question) {
     try {
@@ -45,7 +58,7 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
   }
 
   // Initialize our custom speech hook
-  const { isListening, startListening, stopListening, speak } = useSpeech(async (userText) => {
+  const { isListening, startListening, stopListening, speak, stopSpeaking } = useSpeech(async (userText) => {
     // 1. User stopped talking, we got the text
     setStatus("Thinking...");
     
@@ -103,24 +116,45 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
         }
       }
 
-      // append assistant reply to history state and ref
+      // Detect if assistant asked the closing question and append reply to history
+      const closingQuestionRegex = /do you have any questions for me|any questions for me|do you have any questions\?/i;
+      if (closingQuestionRegex.test(assistantMessage)) {
+        awaitingCloseRef.current = true;
+      }
+
       setHistory((prev) => {
         const next = [...prev, { role: "assistant", content: assistantMessage }];
         historyRef.current = next;
         return next;
       });
       setStatus("Ready");
+
       if (isEnd && !finishedRef.current) {
-        finishedRef.current = true;
-        try {
-          await speak(assistantMessage);
-        } catch (e) {
-          console.error("TTS error:", e);
+        // If assistant incorrectly marked end while asking for candidate questions,
+        // treat it as non-final and wait for candidate reply.
+        if (awaitingCloseRef.current && closingQuestionRegex.test(assistantMessage)) {
+          try {
+            speak(assistantMessage).catch((e) => logTtsError(e));
+          } catch (e) {
+            logTtsError(e);
+          }
+          // do not close yet
+        } else {
+          finishedRef.current = true;
+          try {
+            await speak(assistantMessage);
+          } catch (e) {
+            logTtsError(e);
+          }
+          // Increment streak once per day for completing a mock interview
+          try { await tryIncrementStreak(); } catch (e) { /* ignore */ }
+          // stop any TTS immediately and close
+          try { stopSpeaking?.(); } catch (e) {}
+          onClose?.();
         }
-        onClose?.();
       } else {
         // speak but don't await for non-final replies
-        speak(assistantMessage).catch((e) => console.error("TTS error:", e));
+        speak(assistantMessage).catch((e) => logTtsError(e));
         if (/\?/m.test(assistantMessage)) setQuestionIndex((q) => q + 1);
       }
 
@@ -134,13 +168,8 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
   async function startInterview() {
     setStatus("Thinking...");
     setStarted(true);
-    // Instruct the model to return structured JSON to enforce one-question-at-a-time and reliable ending
-    const systemPrompt = `You are a pro technical interviewer. Follow these EXACT rules and output ONLY a JSON object (no extra text):\n
-  1) Ask exactly one technical question at a time appropriate for the "${difficulty}" difficulty${topic ? ` about the topic: ${topic}` : ""}.\n
-  2) After the user's answer, provide a brief correction if they are wrong (1-2 sentences), then ask the next question.\n
-  3) After two questions and corrections, set \"end\": true and provide a short closing message.\n
-  The JSON object must have the shape: {"message":"...", "end": false|true}.\n
-  If you cannot follow JSON, return a JSON object with the message field containing the text and end=false.`;
+    // Instruct the model to behave like a human interviewer and prefer JSON output when possible
+    const systemPrompt = `You are a professional technical interviewer. Behave like a human interviewer: greet the candidate (e.g. "Good morning/afternoon"), be conversational, and ask clear technical questions. When possible return a JSON object with shape: {"message":"...", "end": false|true}.\n\n1) Start with a short greeting ("Good morning/afternoon — thanks for joining. How are you today?" or similar).\n2) Ask one technical question at a time appropriate for the "${difficulty}" difficulty${topic ? ` about the topic: ${topic}` : ""}.\n3) After the user's answer, provide a brief constructive comment or correction (1-2 sentences), then ask the next question.\n4) After two technical questions and corrections, ask a closing transitional question such as: "Do you have any questions for me about the role or the interview?" Then provide a short closing remark and set \"end\": true.\n5) Use natural interviewer phrasing ("Can you walk me through your thought process?", "Take your time", "Any questions for me?").\n\nIf you cannot reliably output strict JSON, put the interviewer text in the message field and set end accordingly.`;
     systemPromptRef.current = systemPrompt;
 
     try {
@@ -179,6 +208,11 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
           assistantMessage = assistantMessage.slice(0, firstQ + 1).trim();
         }
       }
+      const closingQuestionRegex = /do you have any questions for me|any questions for me|do you have any questions\?/i;
+      if (closingQuestionRegex.test(assistantMessage)) {
+        awaitingCloseRef.current = true;
+      }
+
       setHistory((h) => {
         const next = [...h, { role: "assistant", content: assistantMessage }];
         historyRef.current = next;
@@ -186,15 +220,28 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
       });
       setStatus("Ready");
       if (isEnd && !finishedRef.current) {
-        finishedRef.current = true;
-        try {
-          await speak(assistantMessage);
-        } catch (e) {
-          console.error("TTS error:", e);
+        if (awaitingCloseRef.current && closingQuestionRegex.test(assistantMessage)) {
+          // assistant asked for candidate questions but set end: wait for user's reply
+          try {
+            speak(assistantMessage).catch((e) => logTtsError(e));
+          } catch (e) {
+            logTtsError(e);
+          }
+        } else {
+          finishedRef.current = true;
+          try {
+            await speak(assistantMessage);
+          } catch (e) {
+            logTtsError(e);
+          }
+          // Increment streak once per day for completing a mock interview
+          try { await tryIncrementStreak(); } catch (e) { /* ignore */ }
+          // stop any speech then close
+          try { stopSpeaking?.(); } catch (e) {}
+          onClose?.();
         }
-        onClose?.();
       } else {
-        speak(assistantMessage).catch((e) => console.error("TTS error:", e));
+        speak(assistantMessage).catch((e) => logTtsError(e));
       }
     } catch (err) {
       console.error(err);
@@ -207,13 +254,21 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    // ensure we stop any speech when this component unmounts
+    return () => {
+      try { stopSpeaking?.(); } catch (e) {}
+      try { stopListening(); } catch (e) {}
+    };
+  }, []);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/60" onClick={() => { try { stopSpeaking?.(); } catch (e) {} ; onClose?.(); }} />
       <div className="relative p-6 rounded-lg bg-transparent recommended-card max-w-2xl mx-4" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between mb-4">
           <h2 className="text-2xl font-bold">AI Mock Interview{difficulty ? ` — ${difficulty}` : ""}</h2>
-          <button onClick={onClose} className="px-3 py-1 rounded-md bg-white/10">Close</button>
+          <button onClick={() => { try { stopSpeaking?.(); } catch (e) {} ; onClose?.(); }} className="px-3 py-1 rounded-md bg-white/10">Close</button>
         </div>
       
       <div className="flex items-center gap-4 mb-6">
@@ -225,11 +280,15 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
             Start Interview
           </button>
         ) : (
-          <>
+            <>
             <button
               onClick={() => {
                 if (isListening) stopListening();
-                else startListening();
+                else {
+                  // stop any TTS immediately before starting user speech
+                  try { stopSpeaking?.(); } catch (e) {}
+                  startListening();
+                }
               }}
               aria-pressed={isListening}
               className={`px-6 py-3 rounded-full text-white font-semibold transition-all ${

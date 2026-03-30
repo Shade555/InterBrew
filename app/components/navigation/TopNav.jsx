@@ -35,9 +35,14 @@ export default function TopNav() {
       }
     }
     loadStreak();
-    return () => {
-      mounted = false;
-    };
+    function onStreakUpdated(e) {
+      try {
+        const s = e?.detail?.streak;
+        if (typeof s === 'number') setStreak(s);
+      } catch (e) {}
+    }
+    window.addEventListener('streak:updated', onStreakUpdated);
+    return () => { mounted = false };
   }, []);
 
   return (

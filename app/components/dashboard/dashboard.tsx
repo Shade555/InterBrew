@@ -2,8 +2,94 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react"
 import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import "./dashboard.css"
 import { supabase } from "../../../lib/supabaseClient";
+
+function ScenarioGraph() {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
+
+  const data = [55, 62, 48, 65, 58, 72, 60, 78, 55, 70, 80, 65, 74, 58, 82]
+  const w = 500
+  const h = 100
+  const min = Math.min(...data) - 5
+  const max = Math.max(...data) + 5
+  const xStep = w / (data.length - 1)
+  const yScale = (v: number) => h - 10 - ((v - min) / (max - min)) * (h - 20)
+  const xs = data.map((_, i) => i * xStep)
+  const ys = data.map((v) => yScale(v))
+
+  let linePath = `M ${xs[0]},${ys[0]}`
+  for (let i = 1; i < data.length; i++) {
+    const cpx1 = xs[i - 1] + xStep / 3
+    const cpx2 = xs[i] - xStep / 3
+    linePath += ` C ${cpx1},${ys[i - 1]} ${cpx2},${ys[i]} ${xs[i]},${ys[i]}`
+  }
+  const areaPath = `${linePath} L ${xs[data.length - 1]},${h} L ${xs[0]},${h} Z`
+
+  const peakIdx = data.indexOf(Math.max(...data))
+  const peakXPct = (xs[peakIdx] / w) * 100
+  const peakYPct = (ys[peakIdx] / h) * 100
+
+  return (
+    <>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${w} ${h}`}
+        className="w-full h-full cursor-crosshair"
+        preserveAspectRatio="none"
+        onMouseMove={(e) => {
+          const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect()
+          const xRatio = (e.clientX - rect.left) / rect.width
+          const idx = Math.round(xRatio * (data.length - 1))
+          setHoverIdx(Math.max(0, Math.min(data.length - 1, idx)))
+        }}
+        onMouseLeave={() => setHoverIdx(null)}
+      >
+        <defs>
+          <linearGradient id="areaGradDash" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0" />
+          </linearGradient>
+          <filter id="glowDash" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="1.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        <path d={areaPath} fill="url(#areaGradDash)" />
+        <path
+          d={linePath}
+          fill="none"
+          stroke="#10b981"
+          strokeWidth="1.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          filter="url(#glowDash)"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+
+      {/* persistent peak */}
+      <div
+        className="pointer-events-none absolute"
+        style={{
+          left: `clamp(36px, ${peakXPct}%, calc(100% - 36px))`,
+          top: `clamp(28px, ${peakYPct}%, calc(100% - 8px))`,
+          transform: 'translate(-50%, -130%)',
+        }}
+      >
+        <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/25 backdrop-blur-sm">
+          <span className="text-xs text-emerald-400 font-medium whitespace-nowrap">Score: {Math.max(...data)}</span>
+        </div>
+      </div>
+    </>
+  )
+}
 
 function StatCard({
   title,
@@ -663,56 +749,13 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="pt-0 px-0 sm:px-0 lg:px-0 pb-6 v-scrollbar-hide">
+    <div className="pt-4 px-0 sm:px-0 lg:px-0 pb-6 v-scrollbar-hide">
 
-      {/* Recommended Collections: horizontally scrollable cards */}
-      <section className="mb-1">
-        <h2 className="mt-2 mb-2 text-2xl font-semibold">Recommended collections</h2>
-        <div>
-            <div className="rounded-2xl overflow-hidden">
-              <div className="flex gap-2 overflow-x-auto pl-0 pr-1 py-1 scrollbar-hide">
-                {collections.map((c) => (
-                  <div key={c.title} className="min-w-[20rem] sm:min-w-[24rem] md:min-w-md lg:min-w-lg shrink-0 rounded-xl p-8 sm:p-10 md:p-12 text-white bg-transparent recommended-card" style={{minHeight: 220}}>
-                    <div className="text-sm opacity-90">Collection</div>
-                    <div className="mt-3 text-2xl sm:text-3xl md:text-4xl font-bold">{c.title}</div>
-                    <div className="mt-4 text-sm opacity-90">5 courses · 24 items</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {favOpen && (() => {
-              const modal = (
-                <div className="fixed inset-0 z-50 flex items-center justify-center">
-                  <div className="absolute inset-0 bg-transparent backdrop-blur-sm" onClick={() => setFavOpen(false)} />
-                  <div className="relative w-full max-w-2xl p-2">
-                    <div className="rounded-lg p-4 bg-transparent text-white recommended-card" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-between">
-                        <div className="text-lg font-semibold">Favourite questions</div>
-                        <button onClick={() => setFavOpen(false)} className="ml-2 px-3 py-1 rounded-md bg-white/10">Close</button>
-                      </div>
-                      <div className="mt-4 max-h-64 overflow-y-auto">
-                        <ul className="space-y-3">
-                          {favQuestions.map((q, i) => (
-                            <li key={i} className="text-sm opacity-90">{q}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-              try {
-                return createPortal(modal, document.body)
-              } catch (e) {
-                return modal
-              }
-            })()}
-        </div>
-      </section>
+      
 
       {/* New 2-column layout below recommended collections (left column smaller) */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-2">
-        <div className="lg:col-span-2 rounded-lg p-4 bg-black/80 dark:bg-black/60 flex flex-col items-center">
+        <div className="lg:col-span-2 rounded-lg p-4 col-bg flex flex-col items-center">
           <h3 className="mb-4 text-lg font-semibold">Readiness Score</h3>
 
           {/* small circular progress badges, scrollable */}
@@ -743,12 +786,11 @@ export default function Dashboard() {
 
           <div className="mt-6 w-full grid grid-cols-1 gap-4">
             <div>
-              <h4 className="text-sm font-semibold mb-2">This week's</h4>
-              <div className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                <div>Total: XP points - {thisWeek.xp ?? '—'}</div>
-                <div>Badges Earned: {thisWeek.badges ?? '—'}</div>
-                <div>Current levels:</div>
-                <div>Leaderboard Rank: {thisWeek.leaderboard_rank ?? '—'}</div>
+                <div className="card-bg border border-white/8 rounded-xl p-4 text-white w-full text-center">
+                <div className="text-sm opacity-90">Slaying September Contest</div>
+                <div className="mt-4">
+                  <button className="px-4 py-2 rounded-md bg-[#19332C]/50 hover:bg-[#19332C]/80 text-white">Continue</button>
+                </div>
               </div>
             </div>
 
@@ -762,19 +804,22 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="lg:col-span-3 relative rounded-lg p-2 sm:p-4 bg-black/80 dark:bg-black/60">
+        <div className="lg:col-span-3 relative rounded-lg p-4 col-bg">
           {/* right column: contest card, expanding interviews panel, and graph */}
           <div className="flex flex-col gap-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
               {/* Two cards placed side-by-side on larger screens */}
-              <div className="rounded-lg p-3 bg-transparent text-white w-full text-center recommended-card">
-                <div className="text-sm opacity-90">Slaying September Contest</div>
-                <div className="mt-4">
-                  <button className="px-4 py-2 rounded-md bg-[#19332C]/50 hover:bg-[#19332C]/80 text-white">Continue</button>
-                </div>
+              <div className="lg:col-span-1">
+                <h4 className="text-xl font-semibold mb-3">This week:</h4>
+                <div className="text-base leading-relaxed text-gray-200 dark:text-gray-300">
+                    <div className="mb-1">Total: XP points - <span className="font-medium">{thisWeek.xp ?? '—'}</span></div>
+                    <div className="mb-1">Badges Earned: <span className="font-medium">{thisWeek.badges ?? '—'}</span></div>
+                    <div className="mb-1">Current levels:</div>
+                    <div className="mb-1">Leaderboard Rank: <span className="font-medium">{thisWeek.leaderboard_rank ?? '—'}</span></div>
+                  </div>
               </div>
               <div
-                className="rounded-lg p-3 bg-transparent text-white w-full recommended-card cursor-pointer"
+                className="card-bg border border-white/8 rounded-xl p-3 text-white w-full cursor-pointer lg:col-span-2"
                 onClick={() => setFavOpen(true)}
               >
                 <div className="text-sm opacity-90">Favourite questions</div>
@@ -792,36 +837,78 @@ export default function Dashboard() {
               {/* Calendar removed from right column per design change */}
             </div>
 
-            <div className="rounded-lg card-outline p-3 h-96 bg-transparent relative overflow-hidden">
-              <div className="mx-auto w-full sm:max-w-3xl h-full">
-                {/* cards removed from graph area */}
-                <div className="flex flex-col gap-3 mb-4">
-                  <select className="rounded-md border px-2 sm:px-3 py-1 w-full sm:w-36 bg-transparent text-xs sm:text-sm text-gray-800 dark:text-gray-200 dashboard-select">
-                    <option>Monthly</option>
-                    <option>Weekly</option>
-                    <option>Daily</option>
-                  </select>
-                  <select className="rounded-md border px-2 sm:px-3 py-1 w-full sm:w-36 bg-transparent text-xs sm:text-sm text-gray-800 dark:text-gray-200 dashboard-select">
-                    <option>subject</option>
-                    <option>Frontend</option>
-                    <option>Backend</option>
-                  </select>
+              <div className="card-bg border border-white/8 rounded-2xl p-5 h-96 relative overflow-hidden">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-medium text-white">Performance Chart</h3>
+                  <p className="text-xs text-gray-600 mt-0.5">Score trend in last · 14 days</p>
                 </div>
-                    <svg viewBox="0 0 600 300" preserveAspectRatio="none" className="w-full h-full">
-                      <defs>
-                        <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
-                          <stop offset="0%" stopColor="#297356" stopOpacity="0.18" />
-                          <stop offset="100%" stopColor="#297356" stopOpacity="0.02" />
-                        </linearGradient>
-                      </defs>
-                      <path d="M0 200 L50 160 L100 180 L150 120 L200 140 L250 100 L300 120 L350 90 L400 130 L450 80 L500 100 L550 60 L600 40" fill="url(#g1)" stroke="none" />
-                      <path d="M0 200 L50 160 L100 180 L150 120 L200 140 L250 100 L300 120 L350 90 L400 130 L450 80 L500 100 L550 60 L600 40" fill="none" stroke="#297356" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" />
-                    </svg>
-                </div>
+              </div>
+
+              <div className="flex-1 min-h-0 relative">
+                <ScenarioGraph />
               </div>
             </div>
           </div>
         </div>
       </div>
-  )
-}
+        {/* Recommended Collections: horizontally scrollable cards (moved below main grid) */}
+        <section className="mb-1 mt-6">
+          <h2 className="mt-2 mb-2 text-2xl font-semibold">Recommended collections</h2>
+          <div>
+              <div className="rounded-2xl overflow-hidden">
+                <div className="flex gap-2 overflow-x-auto pl-0 pr-1 py-1 scrollbar-hide">
+                  {collections.map((c) => (
+                    <div key={c.title} className="min-w-[20rem] sm:min-w-[24rem] md:min-w-md lg:min-w-lg shrink-0 recommended-card rounded-xl p-6 text-white group relative transition-all duration-200 overflow-hidden" style={{ minHeight: 220 }}>
+                      {/* Main visible content - fades out on hover */}
+                      <div className="flex flex-col h-full transition-opacity duration-200 opacity-100 group-hover:opacity-0">
+                        <div className="text-sm opacity-90">Collection</div>
+                        <div className="mt-3 text-2xl sm:text-3xl md:text-4xl font-bold">{c.title}</div>
+                        <div className="mt-4 text-sm opacity-90">5 courses · 24 items</div>
+                      </div>
+
+                      {/* Hover overlay (actions) - styled via dashboard.css */}
+                      <div className="dashboard-collection-overlay">
+                        <div className="text-xl font-semibold">{c.title}</div>
+                        <div className="text-sm opacity-80 text-center">Explore this collection and start practicing</div>
+                        <div className="flex gap-3 mt-2">
+                          <Link href={`/collections/${c.title.toLowerCase().replace(/\s+/g, '-')}`} className="px-4 py-2 rounded-md border border-white/30 bg-white/6 hover:bg-white/10">Learn</Link>
+                          <Link href={`/collections`} className="px-4 py-2 rounded-md border border-white/30 bg-white/6 hover:bg-white/10">Mock</Link>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {favOpen && (() => {
+                const modal = (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="absolute inset-0 bg-transparent backdrop-blur-sm" onClick={() => setFavOpen(false)} />
+                      <div className="relative w-full max-w-2xl p-2">
+                        <div className="recommended-card rounded-xl p-4 text-white" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between">
+                          <div className="text-lg font-semibold">Favourite questions</div>
+                          <button onClick={() => setFavOpen(false)} className="ml-2 px-3 py-1 rounded-md bg-white/10">Close</button>
+                        </div>
+                        <div className="mt-4 max-h-64 overflow-y-auto">
+                          <ul className="space-y-3">
+                            {favQuestions.map((q, i) => (
+                              <li key={i} className="text-sm opacity-90">{q}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+                try {
+                  return createPortal(modal, document.body)
+                } catch (e) {
+                  return modal
+                }
+              })()}
+          </div>
+        </section>
+      </div>
+    )
+  }
