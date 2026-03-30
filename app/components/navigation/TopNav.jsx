@@ -1,8 +1,13 @@
-"use client"
+"use client";
 
 import React, { useEffect, useState } from "react";
-import Link from 'next/link';
+import Link from "next/link";
 import { supabase } from "../../../lib/supabaseClient";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export default function TopNav() {
   const [streak, setStreak] = useState(10);
@@ -14,45 +19,119 @@ export default function TopNav() {
         const { data: userData } = await supabase.auth.getUser();
         const userId = userData?.user?.id;
         if (!userId) return;
-        const { data, error } = await supabase.from('user_dashboards').select('streak').eq('user_id', userId).single();
+        const { data, error } = await supabase
+          .from("user_dashboards")
+          .select("streak")
+          .eq("user_id", userId)
+          .single();
         if (error) {
-          console.debug('TopNav: failed to load streak', error);
+          console.debug("TopNav: failed to load streak", error);
           return;
         }
         if (!mounted) return;
         setStreak(data?.streak ?? 0);
       } catch (e) {
-        console.error('TopNav error loading streak', e);
+        console.error("TopNav error loading streak", e);
       }
     }
     loadStreak();
-    return () => { mounted = false };
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex h-20 items-center justify-between px-6 backdrop-blur-md bg-white/5 dark:bg-black/20">
       <div className="flex items-center gap-4">
-        <Link href="/" className="text-2xl font-semibold text-[#50C878]">InterBrew</Link>
+        <Link href="/" className="text-2xl font-semibold text-[#50C878]">
+          InterBrew
+        </Link>
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-transparent mr-6 hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
-          <img src="/TopPanel/fire.png" alt="activity" className="w-8 h-8 object-contain" />
-          <div className="text-base font-medium">{streak}</div>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-transparent mr-6 hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+              <img
+                src="/TopPanel/fire.png"
+                alt="activity"
+                className="w-8 h-8 object-contain"
+              />
+              <div className="text-base font-medium">{streak}</div>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Your current streak</p>
+          </TooltipContent>
+        </Tooltip>
 
-        <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
-          <img src="/TopPanel/help.png" alt="help" className="w-8 h-8 object-contain" />
-        </button>
-        <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
-          <img src="/TopPanel/feedback.png" alt="messages" className="w-8 h-8 object-contain" />
-        </button>
-        <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
-          <img src="/TopPanel/about.png" alt="about" className="w-8 h-8 object-contain" />
-        </button>
-        <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
-          <img src="/TopPanel/profile.png" alt="profile" className="w-8 h-8 object-contain rounded-full" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href="/about">
+              <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+                <img
+                  src="/TopPanel/about.png"
+                  alt="about"
+                  className="w-8 h-8 object-contain"
+                />
+              </button>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>About</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href="/help">
+              <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+                <img
+                  src="/TopPanel/help.png"
+                  alt="help"
+                  className="w-8 h-8 object-contain"
+                />
+              </button>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Help</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href="/feedback">
+              <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+                <img
+                  src="/TopPanel/feedback.png"
+                  alt="messages"
+                  className="w-8 h-8 object-contain"
+                />
+              </button>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Feedback</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href="/profile">
+              <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+                <img
+                  src="/TopPanel/profile.png"
+                  alt="profile"
+                  className="w-8 h-8 object-contain rounded-full"
+                />
+              </button>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Profile</p>
+          </TooltipContent>
+        </Tooltip>
       </div>
     </header>
   );
