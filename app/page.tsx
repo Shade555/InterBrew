@@ -3,26 +3,12 @@ import BlurText from "../components/BlurText";
 import StarBorder from "../components/StarBorder";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 
 export default function Home() {
   const router = useRouter();
   const handleAnimationComplete = () => {
     console.log("Animation completed!");
   };
-
-  useEffect(() => {
-    // Disable scrolling on home page
-    document.documentElement.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      // Re-enable scrolling when leaving home page
-      document.documentElement.style.overflow = "auto";
-      document.body.style.overflow = "auto";
-    };
-  }, []);
-
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden px-4 sm:px-6 lg:px-8 home-no-scrollbar">
       <div className="text-center w-full max-w-4xl mx-auto">
