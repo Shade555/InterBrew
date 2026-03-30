@@ -11,11 +11,15 @@ export async function POST(req) {
       message,
       history = [],
       moduleTitle = "this topic",
+      system,
     } = await req.json();
 
-    const systemMessage = {
-      role: "system",
-      content: `You are a formal interviewer conducting a structured job interview. Topic: "${moduleTitle}".
+    // Use custom system prompt if provided (for mock_int), otherwise use formal interviewer (for scenario)
+    let systemPromptContent;
+    if (system) {
+      systemPromptContent = system;
+    } else {
+      systemPromptContent = `You are a formal interviewer conducting a structured job interview. Topic: "${moduleTitle}".
 
 Persona: Cold, professional, neutral. You do not react to answer quality — you move forward after every response.
 
@@ -29,13 +33,20 @@ RULES:
 - If the answer was completely off-topic, ask the original question once, verbatim, with no commentary.
 - After the candidate answers your 4th question, output exactly: "That concludes the interview." then append "[INTERVIEW_COMPLETE]" — nothing after it.
 - Never ask a 5th question.
-- Open directly with your first question — no greeting, no intro, no "Welcome", no "Today we will".`,
+- Open directly with your first question — no greeting, no intro, no "Welcome", no "Today we will".`;
+    }
+
+    const systemMessage = {
+      role: "system",
+      content: systemPromptContent,
     };
 
+    // Build messages: skip "__start__" signal, but keep "__greeting_request__" for message structure
+    const userMessage = message === "__start__" ? null : { role: "user", content: message };
     const messages = [
       systemMessage,
       ...history,
-      { role: "user", content: message },
+      ...(userMessage ? [userMessage] : []),
     ];
 
     const chatCompletion = await groq.chat.completions.create({
@@ -52,11 +63,14 @@ RULES:
     const isComplete = raw.includes("[INTERVIEW_COMPLETE]");
     const reply = raw.replace("[INTERVIEW_COMPLETE]", "").trim();
 
+    // Log for debugging
+    console.log("Groq Response:", { raw, isComplete, reply, tokenUsage: chatCompletion.usage });
+
     return NextResponse.json({ reply, isComplete });
   } catch (error) {
     console.error("Groq API Error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch response" },
+      { error: "Failed to fetch response", details: error.message },
       { status: 500 },
     );
   }

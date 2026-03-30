@@ -14,7 +14,7 @@ export default function GlobalShell({ children }) {
     return (
       <>
         <Background />
-        <div className="px-4 py-4">{children}</div>
+        <div className={`px-4 py-4 ${isLanding ? 'home-no-scrollbar' : ''} min-h-screen overflow-hidden`}>{children}</div>
       </>
     );
 

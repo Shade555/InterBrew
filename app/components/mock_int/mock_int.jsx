@@ -25,6 +25,7 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
   const [started, setStarted] = useState(false);
   const [favAdded, setFavAdded] = useState([]);
   const awaitingCloseRef = useRef(false);
+  const mouseDownRef = useRef(false);
 
   async function addToFavourites(question) {
     try {
@@ -61,16 +62,9 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
   const { isListening, startListening, stopListening, speak, stopSpeaking } = useSpeech(async (userText) => {
     // 1. User stopped talking, we got the text
     setStatus("Thinking...");
-    
-    // append user message to history state and ref so we always send the latest
-    setHistory((prev) => {
-      const next = [...prev, { role: "user", content: userText }];
-      historyRef.current = next;
-      return next;
-    });
 
     try {
-      // 2. Send text to our Next.js backend
+      // 2. Send text to our Next.js backend (API will add message to history)
         const res = await fetch("/api/mock_int", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -79,17 +73,30 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
 
       const data = await res.json();
 
+      // Check for API errors
+      if (!res.ok || data.error) {
+        console.error("API error:", data.error || res.statusText);
+        setStatus("Error: API failed");
+        setHistory((prev) => {
+          const next = [...prev, { role: "user", content: userText }, { role: "assistant", content: "Sorry, I encountered an error. Please try again." }];
+          historyRef.current = next;
+          return next;
+        });
+        return;
+      }
+
       // 3. AI replied. Prefer structured JSON: { message: string, end: boolean }
       let assistantReplyRaw = data.reply || "";
+      console.log("API Response:", { reply: assistantReplyRaw, isComplete: data.isComplete });
       let assistantMessage = assistantReplyRaw;
-      let isEnd = false;
+      let isEnd = false || data.isComplete;
 
       try {
         // Try direct parse
         const parsed = JSON.parse(assistantReplyRaw);
-        if (parsed && typeof parsed.message === "string") {
+        if (parsed && typeof parsed.message === "string" && parsed.message.trim().length > 0) {
           assistantMessage = parsed.message;
-          isEnd = !!parsed.end;
+          isEnd = !!parsed.end || isEnd;
         }
       } catch (e) {
         // Try to extract JSON substring
@@ -97,14 +104,29 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
         if (jsonMatch) {
           try {
             const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed && typeof parsed.message === "string") {
+            // Only use JSON if message is substantial (not empty or just "take your time")
+            if (parsed && typeof parsed.message === "string" && parsed.message.trim().length > 20) {
               assistantMessage = parsed.message;
-              isEnd = !!parsed.end;
+              isEnd = !!parsed.end || isEnd;
+            } else {
+              // If JSON message is empty or too short, extract all text before the JSON
+              const textBeforeJson = assistantReplyRaw.substring(0, jsonMatch.index).trim();
+              if (textBeforeJson.length > 0) {
+                assistantMessage = textBeforeJson;
+              } else {
+                assistantMessage = assistantReplyRaw.replace(jsonMatch[0], "").trim();
+              }
+              isEnd = parsed && !!parsed.end ? true : isEnd;
             }
           } catch (e2) {
-            // fall back to heuristics
+            // keep raw response
           }
         }
+      }
+
+      // Ensure we have a message
+      if (!assistantMessage || assistantMessage.trim() === "") {
+        assistantMessage = "I'm thinking... could you rephrase that?";
       }
 
       // fallback heuristics: trim multiple questions to first
@@ -123,7 +145,7 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
       }
 
       setHistory((prev) => {
-        const next = [...prev, { role: "assistant", content: assistantMessage }];
+        const next = [...prev, { role: "user", content: userText }, { role: "assistant", content: assistantMessage }];
         historyRef.current = next;
         return next;
       });
@@ -179,27 +201,51 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
         body: JSON.stringify({ message: "__start__", history: historyRef.current, system: systemPromptRef.current }),
       });
       const data = await res.json();
+
+      // Check for API errors
+      if (!res.ok || data.error) {
+        console.error("API error:", data.error || res.statusText);
+        setStatus("Error: Failed to start interview");
+        return;
+      }
+
       let assistantReplyRaw = data.reply || "";
       let assistantMessage = assistantReplyRaw;
-      let isEnd = false;
+      let isEnd = false || data.isComplete;
       try {
         const parsed = JSON.parse(assistantReplyRaw);
-        if (parsed && typeof parsed.message === "string") {
+        if (parsed && typeof parsed.message === "string" && parsed.message.trim().length > 0) {
           assistantMessage = parsed.message;
-          isEnd = !!parsed.end;
+          isEnd = !!parsed.end || isEnd;
         }
       } catch (e) {
         const jsonMatch = assistantReplyRaw.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
             const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed && typeof parsed.message === "string") {
+            // Only use JSON if message is substantial (not empty or too short)
+            if (parsed && typeof parsed.message === "string" && parsed.message.trim().length > 20) {
               assistantMessage = parsed.message;
-              isEnd = !!parsed.end;
+              isEnd = !!parsed.end || isEnd;
+            } else {
+              // If JSON message is empty or too short, extract all text before the JSON
+              const textBeforeJson = assistantReplyRaw.substring(0, jsonMatch.index).trim();
+              if (textBeforeJson.length > 0) {
+                assistantMessage = textBeforeJson;
+              } else {
+                assistantMessage = assistantReplyRaw.replace(jsonMatch[0], "").trim();
+              }
+              isEnd = parsed && !!parsed.end ? true : isEnd;
             }
           } catch (e2) {}
         }
       }
+
+      // Ensure we have a message
+      if (!assistantMessage || assistantMessage.trim() === "") {
+        assistantMessage = "Hello, and thanks for joining. How are you today?";
+      }
+
       // fallback: trim multiple questions to first
       if (!isEnd) {
         const questionMarks = (assistantMessage.match(/\?/g) || []).length;
@@ -214,7 +260,12 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
       }
 
       setHistory((h) => {
-        const next = [...h, { role: "assistant", content: assistantMessage }];
+        // Add a placeholder user message first, then the assistant greeting
+        // This ensures proper alternating user/assistant message structure for Groq
+        const next = [
+          { role: "user", content: "__greeting_request__" },
+          { role: "assistant", content: assistantMessage }
+        ];
         historyRef.current = next;
         return next;
       });
@@ -262,6 +313,18 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
     };
   }, []);
 
+  useEffect(() => {
+    // Global mouseUp handler to catch releases outside the button
+    const handleGlobalMouseUp = () => {
+      if (mouseDownRef.current && isListening) {
+        mouseDownRef.current = false;
+        stopListening();
+      }
+    };
+    document.addEventListener("mouseup", handleGlobalMouseUp);
+    return () => document.removeEventListener("mouseup", handleGlobalMouseUp);
+  }, [isListening]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={() => { try { stopSpeaking?.(); } catch (e) {} ; onClose?.(); }} />
@@ -282,20 +345,25 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
         ) : (
             <>
             <button
-              onClick={() => {
-                if (isListening) stopListening();
-                else {
-                  // stop any TTS immediately before starting user speech
-                  try { stopSpeaking?.(); } catch (e) {}
-                  startListening();
-                }
+              onMouseDown={(e) => {
+                e.preventDefault();
+                mouseDownRef.current = true;
+                // Stop any TTS immediately before starting user speech
+                try { stopSpeaking?.(); } catch (e) {}
+                startListening();
               }}
+              onMouseUp={(e) => {
+                e.preventDefault();
+                mouseDownRef.current = false;
+                stopListening();
+              }}
+              onContextMenu={(e) => e.preventDefault()}
               aria-pressed={isListening}
-              className={`px-6 py-3 rounded-full text-white font-semibold transition-all ${
+              className={`px-6 py-3 rounded-full text-white font-semibold transition-all select-none ${
                 isListening ? "bg-red-500 animate-pulse" : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              {isListening ? "Listening... (click to stop)" : "Click to Speak"}
+              {isListening ? "Listening... (release to stop)" : "Hold to Speak"}
             </button>
           </>
         )}
@@ -306,7 +374,9 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
         {history.length === 0 ? (
           <p className="text-gray-400 italic">Conversation will appear here...</p>
         ) : (
-          history.map((msg, index) => (
+          history
+            .filter(msg => msg.content !== "__greeting_request__")
+            .map((msg, index) => (
             <div key={index} className={`mb-3 ${msg.role === "user" ? "text-right" : "text-left"}`}>
               <span className={`inline-block p-2 rounded-lg ${
                 msg.role === "user" ? "bg-blue-100 text-blue-900" : "bg-green-100 text-green-900"

@@ -86,3 +86,21 @@ body {
 .card-outline {
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
+
+/* Home page scrollbar hide */
+.home-no-scrollbar {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.home-no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Hide scrollbar on html element for landing pages */
+html.home-no-scrollbar {
+  overflow: hidden !important;
+}

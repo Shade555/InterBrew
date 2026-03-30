@@ -32,14 +32,30 @@ export function useSpeech(onTextExtracted) {
 
   const startListening = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.start();
-      setIsListening(true);
+      try {
+        // Ensure it's stopped before starting fresh
+        recognitionRef.current.stop();
+      } catch (e) {}
+      
+      setTimeout(() => {
+        try {
+          recognitionRef.current.start();
+          setIsListening(true);
+        } catch (e) {
+          console.error("Error starting listening:", e);
+          setIsListening(false);
+        }
+      }, 100);
     }
   };
 
   const stopListening = () => {
     if (recognitionRef.current) {
-      recognitionRef.current.stop();
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.error("Error stopping listening:", e);
+      }
       setIsListening(false);
     }
   };

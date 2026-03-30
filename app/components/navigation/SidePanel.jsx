@@ -38,7 +38,7 @@ export default function SidePanel() {
               <Link
                 key={it.href}
                 href={it.href}
-                className={`relative group flex items-center gap-3 px-3 h-12 text-sm rounded-md transition-all duration-200 overflow-hidden hover:rounded-lg hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 ${active ? "bg-[#19332C]/50 dark:bg-[#19332C]/40" : ""}`}
+                className={`relative group flex items-center gap-3 px-3 h-12 text-sm rounded-md transition-all duration-200 overflow-hidden hover:rounded-lg hover:bg-emerald-400/10 ${active ? "bg-emerald-400/10" : ""}`}
               >
                 {/* removed right-side glow/pill to avoid global pill effect */}
 
@@ -50,7 +50,7 @@ export default function SidePanel() {
                   />
                 </div>
 
-                <div className="overflow-hidden whitespace-nowrap opacity-0 label transition-all duration-200">
+                <div className="overflow-hidden whitespace-nowrap opacity-0 label transition-all duration-200 text-emerald-400">
                   {it.label}
                 </div>
               </Link>
@@ -59,7 +59,7 @@ export default function SidePanel() {
         </nav>
 
         <div className="mt-auto w-16 sidebar-expandable transition-all duration-200 px-3 mb-6">
-          <div className="text-xs opacity-0 label transition-opacity">Made by Aureon</div>
+          <div className="text-xs opacity-0 label transition-opacity text-emerald-400">Made by Aureon</div>
         </div>
       </div>
     </aside>
