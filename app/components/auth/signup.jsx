@@ -333,7 +333,7 @@ export default function SignupComponent() {
                     Welcome back
                   </h2>
                   <p className="mt-2 text-center text-sm text-gray-300">
-                    Don't have an account?{" "}
+                    Don&apos;t have an account?{" "}
                     <button
                       type="button"
                       onClick={() => setIsFlipped(false)}

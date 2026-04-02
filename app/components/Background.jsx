@@ -17,9 +17,9 @@ export default function Background() {
             cDistance={2.41}
             cPolarAngle={95}
             cameraZoom={1}
-            color1="#19332c"
-            color2="#121417"
-            color3="#12251F"
+            color1="#050505"
+            color2="#000000"
+            color3="#080808"
             destination="onCanvas"
             embedMode="off"
             envPreset="city"

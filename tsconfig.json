@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-  ],
+, "app/challenge/page.jsx"  ],
   "exclude": ["node_modules"]
 }

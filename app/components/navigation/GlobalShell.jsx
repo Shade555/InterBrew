@@ -20,7 +20,6 @@ export default function GlobalShell({ children }) {
 
   return (
     <div className="min-h-screen">
-      <Background />
       <TopNav />
       <SidePanel />
       {/* connector: sits above side panel (z-40) but below TopNav (z-50) to mask seam */}
