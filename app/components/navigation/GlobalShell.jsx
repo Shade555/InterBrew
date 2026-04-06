@@ -14,7 +14,11 @@ export default function GlobalShell({ children }) {
     return (
       <>
         <Background />
-        <div className={`px-4 py-4 ${isLanding ? 'home-no-scrollbar' : ''} min-h-screen overflow-hidden`}>{children}</div>
+        <div
+          className={`px-4 py-4 ${isLanding ? "home-no-scrollbar" : ""} min-h-screen overflow-hidden`}
+        >
+          {children}
+        </div>
       </>
     );
 
@@ -25,7 +29,7 @@ export default function GlobalShell({ children }) {
       <SidePanel />
       {/* connector: sits above side panel (z-40) but below TopNav (z-50) to mask seam */}
       <div
-        className="absolute left-0 top-0 h-16 w-16 z-40 backdrop-blur-md bg-white/5 dark:bg-black/20"
+        className="absolute left-0 top-0 h-16 w-16 z-40 bg-zinc-950/95"
         aria-hidden="true"
       />
 

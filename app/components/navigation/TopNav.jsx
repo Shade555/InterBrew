@@ -38,17 +38,19 @@ export default function TopNav() {
     function onStreakUpdated(e) {
       try {
         const s = e?.detail?.streak;
-        if (typeof s === 'number') setStreak(s);
+        if (typeof s === "number") setStreak(s);
       } catch (e) {}
     }
-    window.addEventListener('streak:updated', onStreakUpdated);
-    return () => { mounted = false };
+    window.addEventListener("streak:updated", onStreakUpdated);
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 flex h-20 items-center justify-between px-6 backdrop-blur-md bg-white/5 dark:bg-black/20">
+    <header className="fixed top-0 left-0 right-0 z-50 flex h-20 items-center justify-between px-6 bg-zinc-950/95 border-b border-white/10">
       <div className="flex items-center gap-4">
-        <Link href="/" className="text-2xl font-semibold text-[#50C878]">
+        <Link href="/" className="text-2xl font-semibold nav-accent">
           InterBrew
         </Link>
       </div>
@@ -56,11 +58,11 @@ export default function TopNav() {
       <div className="flex items-center gap-3">
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-transparent mr-6 hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+            <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-transparent mr-6 hover:bg-white/10 transition-colors">
               <img
                 src="/TopPanel/fire.png"
                 alt="activity"
-                className="w-8 h-8 object-contain"
+                className="w-7 h-7 object-contain nav-icon-tint"
               />
               <div className="text-base font-medium">{streak}</div>
             </div>
@@ -73,11 +75,11 @@ export default function TopNav() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Link href="/about">
-              <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+              <button className="p-2 rounded hover:bg-white/10 transition-colors">
                 <img
                   src="/TopPanel/about.png"
                   alt="about"
-                  className="w-8 h-8 object-contain"
+                  className="w-7 h-7 object-contain nav-icon-tint"
                 />
               </button>
             </Link>
@@ -90,11 +92,11 @@ export default function TopNav() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Link href="/help">
-              <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+              <button className="p-2 rounded hover:bg-white/10 transition-colors">
                 <img
                   src="/TopPanel/help.png"
                   alt="help"
-                  className="w-8 h-8 object-contain"
+                  className="w-7 h-7 object-contain nav-icon-tint"
                 />
               </button>
             </Link>
@@ -107,11 +109,11 @@ export default function TopNav() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Link href="/feedback">
-              <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+              <button className="p-2 rounded hover:bg-white/10 transition-colors">
                 <img
                   src="/TopPanel/feedback.png"
                   alt="messages"
-                  className="w-8 h-8 object-contain"
+                  className="w-7 h-7 object-contain nav-icon-tint"
                 />
               </button>
             </Link>
@@ -124,11 +126,11 @@ export default function TopNav() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Link href="/profile">
-              <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+              <button className="p-2 rounded hover:bg-white/10 transition-colors">
                 <img
                   src="/TopPanel/profile.png"
                   alt="profile"
-                  className="w-8 h-8 object-contain rounded-full"
+                  className="w-7 h-7 object-contain rounded-full nav-icon-tint"
                 />
               </button>
             </Link>

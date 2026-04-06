@@ -19,7 +19,7 @@ export default function SidePanel() {
   const pathname = usePathname() || "/";
 
   return (
-    <aside className="fixed left-0 top-0 h-full z-30 backdrop-blur-md bg-white/5 dark:bg-black/20">
+    <aside className="fixed left-0 top-0 h-full z-30 bg-zinc-950/95 border-r border-white/10">
       <div className="sidebar flex h-full flex-col items-start">
         <div className="flex items-center h-16 w-16 sidebar-expandable transition-all duration-200 ease-in-out px-3">
           <div className="flex items-center gap-3">
@@ -38,7 +38,7 @@ export default function SidePanel() {
               <Link
                 key={it.href}
                 href={it.href}
-                className={`relative group flex items-center gap-3 px-3 h-12 text-sm rounded-md transition-all duration-200 overflow-hidden hover:rounded-lg hover:bg-emerald-400/10 ${active ? "bg-emerald-400/10" : ""}`}
+                className={`relative group flex items-center gap-3 px-3 h-12 text-sm rounded-md transition-all duration-200 overflow-hidden hover:rounded-lg hover:bg-white/10 ${active ? "bg-white/12" : ""}`}
               >
                 {/* removed right-side glow/pill to avoid global pill effect */}
 
@@ -46,11 +46,11 @@ export default function SidePanel() {
                   <img
                     src={`/SidePanel/${it.icon}`}
                     alt={it.label}
-                    className="w-7 h-7 object-contain"
+                    className="w-7 h-7 object-contain nav-icon-tint"
                   />
                 </div>
 
-                <div className="overflow-hidden whitespace-nowrap opacity-0 label transition-all duration-200 text-emerald-400">
+                <div className="overflow-hidden whitespace-nowrap opacity-0 label transition-all duration-200 text-zinc-300">
                   {it.label}
                 </div>
               </Link>
@@ -59,7 +59,9 @@ export default function SidePanel() {
         </nav>
 
         <div className="mt-auto w-16 sidebar-expandable transition-all duration-200 px-3 mb-6">
-          <div className="text-xs opacity-0 label transition-opacity text-emerald-400">Made by Aureon</div>
+          <div className="text-xs opacity-0 label transition-opacity text-zinc-400">
+            Made by Aureon
+          </div>
         </div>
       </div>
     </aside>
