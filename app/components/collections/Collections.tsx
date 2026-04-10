@@ -2,11 +2,65 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import MockInterviewPanel from "../mock_int/mock_int";
+import { supabase } from "../../../lib/supabaseClient";
 
 type DropdownOption<T extends string> = {
   value: T;
   label: string;
 };
+
+type ModuleItem = {
+  id: string;
+  name: string;
+  difficulty: "Easy" | "Medium" | "Difficult";
+  sectionKey: string;
+  sectionId?: string;
+  completed?: boolean;
+};
+
+type BadgeItem = {
+  id?: string;
+  label: string;
+  src: string;
+  sectionKey: string;
+};
+
+type CheatSheetItem = {
+  id?: string;
+  title: string;
+  sectionKey: string;
+  href: string;
+};
+
+type ModuleResources = {
+  doc?: string;
+  youtube?: string;
+};
+
+type SectionItem = {
+  id: string;
+  sectionKey: string;
+  title: string;
+  orderNumber: number;
+};
+
+function normalizeSectionKey(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function humanizeSectionTitle(sectionKey?: string | null) {
+  const key = normalizeSectionKey(sectionKey);
+  if (!key) return "Untitled Section";
+  return key
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 function FilterDropdown<T extends string>({
   value,
@@ -93,6 +147,78 @@ export default function Collections({
 }: {
   className?: string;
 }) {
+  const fallbackBadges: BadgeItem[] = [
+    {
+      label: "Foundation",
+      src: "/images/Foundation.png",
+      sectionKey: "foundation",
+    },
+    {
+      label: "Scheduling",
+      src: "/images/Scheduling.png",
+      sectionKey: "cpu-scheduling",
+    },
+    {
+      label: "Concurrency",
+      src: "/images/Concurrency.png",
+      sectionKey: "thread-management",
+    },
+    {
+      label: "Memory",
+      src: "/images/Memory.png",
+      sectionKey: "memory-management-virtual-memory",
+    },
+    {
+      label: "Command Line",
+      src: "/images/Command%20Line.png",
+      sectionKey: "system-structures",
+    },
+    {
+      label: "Interview - Ready",
+      src: "/images/Interview%20-%20Ready.png",
+      sectionKey: "protection-security",
+    },
+  ];
+
+  const fallbackCheatSheets: CheatSheetItem[] = [
+    { title: "Command Line", sectionKey: "system-structures", href: "#" },
+    {
+      title: "Process Management",
+      sectionKey: "process-management",
+      href: "#",
+    },
+    {
+      title: "Threads & CPU Management",
+      sectionKey: "thread-management",
+      href: "#",
+    },
+    {
+      title: "Process Synchronization & Deadlocks",
+      sectionKey: "process-synchronization-deadlocks",
+      href: "#",
+    },
+    {
+      title: "Memory Management",
+      sectionKey: "memory-management-virtual-memory",
+      href: "#",
+    },
+    {
+      title: "File System and I/O Management",
+      sectionKey: "file-systems",
+      href: "#",
+    },
+    {
+      title: "Intermediate Linux",
+      sectionKey: "io-systems",
+      href: "#",
+    },
+    {
+      title: "Shell Scripting",
+      sectionKey: "protection-security",
+      href: "#",
+    },
+  ];
+
   const [mockDifficulty, setMockDifficulty] = useState<string | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
   const [doneMap, setDoneMap] = useState<Record<string, boolean>>({});
@@ -105,30 +231,362 @@ export default function Collections({
     "all" | "Easy" | "Medium" | "Difficult"
   >("all");
   const [randomPicked, setRandomPicked] = useState<string | null>(null);
-  const [randomOnlyProblem, setRandomOnlyProblem] = useState<string | null>(
+  const [randomOnlyModuleId, setRandomOnlyModuleId] = useState<string | null>(
     null,
   );
   const [revisionMap, setRevisionMap] = useState<Record<string, boolean>>({});
-  const [isBasicsOpen, setIsBasicsOpen] = useState(true);
-  const [isThingsOpen, setIsThingsOpen] = useState(true);
+  const [resourcesMap, setResourcesMap] = useState<
+    Record<string, ModuleResources>
+  >({});
+  const [courseBadges, setCourseBadges] = useState<BadgeItem[]>(fallbackBadges);
+  const [cheatSheets, setCheatSheets] =
+    useState<CheatSheetItem[]>(fallbackCheatSheets);
+  const [sections, setSections] = useState<SectionItem[]>([]);
+  const [items, setItems] = useState<ModuleItem[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [dataError, setDataError] = useState<string>("");
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  const items = [
-    { name: "Input Output", difficulty: "Easy" },
-    { name: "Data Types and Variables", difficulty: "Easy" },
-    { name: "Conditional Statements", difficulty: "Easy" },
-    { name: "Loops and Iteration", difficulty: "Medium" },
-    { name: "Functions and Scope", difficulty: "Medium" },
-    { name: "Arrays and Strings", difficulty: "Medium" },
-    { name: "Recursion Basics", difficulty: "Difficult" },
-    { name: "Time Complexity Intro", difficulty: "Difficult" },
-  ];
+  useEffect(() => {
+    let active = true;
 
-  function toggleDone(problem: string) {
-    setDoneMap((prev) => ({ ...prev, [problem]: !prev[problem] }));
+    async function fetchCollectionsData() {
+      setDataError("");
+      try {
+        const {
+          data: { user },
+          error: userErr,
+        } = await supabase.auth.getUser();
+        if (userErr) throw userErr;
+        const currentUserId = user?.id ?? null;
+        if (active) setUserId(currentUserId);
+
+        const { data: sectionsData, error: sectionsErr } = await supabase
+          .from("collection_sections")
+          .select("id, section_key, title, order_number")
+          .order("order_number", { ascending: true });
+        if (sectionsErr) throw sectionsErr;
+
+        const normalizedSections: SectionItem[] = (sectionsData ?? []).map(
+          (s: {
+            id: string;
+            section_key: string;
+            title: string;
+            order_number: number;
+          }) => ({
+            id: s.id,
+            sectionKey: s.section_key,
+            title: s.title || humanizeSectionTitle(s.section_key),
+            orderNumber: s.order_number ?? 0,
+          }),
+        );
+        if (active) {
+          setSections(normalizedSections);
+          setOpenSections((prev) => {
+            const next = { ...prev };
+            normalizedSections.forEach((section, idx) => {
+              if (typeof next[section.sectionKey] !== "boolean") {
+                next[section.sectionKey] = idx === 0;
+              }
+            });
+            return next;
+          });
+        }
+
+        const sectionOrder = new Map<string, number>();
+        (sectionsData ?? []).forEach(
+          (s: { section_key: string; order_number: number }) => {
+            sectionOrder.set(s.section_key, s.order_number ?? 0);
+          },
+        );
+
+        const { data: modulesData, error: modulesErr } = await supabase
+          .from("collection_modules")
+          .select(
+            "id, title, difficulty, section_key, section_id, completed, order_number, collection_sections(section_key)",
+          )
+          .order("order_number", { ascending: true });
+        if (modulesErr) throw modulesErr;
+
+        const sortableModules = (modulesData ?? [])
+          .map(
+            (m: {
+              id: string;
+              title: string;
+              difficulty: "Easy" | "Medium" | "Difficult";
+              section_key: string;
+              section_id: string | null;
+              completed?: boolean | null;
+              order_number: number;
+              collection_sections?: Array<{ section_key?: string }>;
+            }) => {
+              const relatedSectionKey = Array.isArray(m.collection_sections)
+                ? m.collection_sections[0]?.section_key
+                : undefined;
+              return {
+                id: m.id,
+                name: m.title,
+                difficulty: m.difficulty,
+                sectionKey: m.section_key || relatedSectionKey || "unassigned",
+                sectionId: m.section_id || undefined,
+                completed: !!m.completed,
+                orderNumber: m.order_number,
+              };
+            },
+          )
+          .sort((a, b) => {
+            const secA =
+              sectionOrder.get(a.sectionKey) ?? Number.MAX_SAFE_INTEGER;
+            const secB =
+              sectionOrder.get(b.sectionKey) ?? Number.MAX_SAFE_INTEGER;
+            if (secA !== secB) return secA - secB;
+            return a.orderNumber - b.orderNumber;
+          });
+
+        const normalizedModules: ModuleItem[] = sortableModules.map(
+          ({ orderNumber, ...rest }) => rest as ModuleItem,
+        );
+
+        if (active) setItems(normalizedModules);
+
+        const moduleIds = normalizedModules.map((m) => m.id);
+        if (moduleIds.length > 0) {
+          const { data: resourcesData, error: resourcesErr } = await supabase
+            .from("collection_resources")
+            .select("module_id, type, url")
+            .in("module_id", moduleIds);
+          if (resourcesErr) throw resourcesErr;
+
+          const resourceLookup: Record<string, ModuleResources> = {};
+          (resourcesData ?? []).forEach(
+            (r: {
+              module_id: string;
+              type: "doc" | "youtube";
+              url: string;
+            }) => {
+              if (!resourceLookup[r.module_id])
+                resourceLookup[r.module_id] = {};
+              if (r.type === "doc" && !resourceLookup[r.module_id].doc) {
+                resourceLookup[r.module_id].doc = r.url;
+              }
+              if (
+                r.type === "youtube" &&
+                !resourceLookup[r.module_id].youtube
+              ) {
+                resourceLookup[r.module_id].youtube = r.url;
+              }
+            },
+          );
+          if (active) setResourcesMap(resourceLookup);
+        }
+
+        const { data: badgesData, error: badgesErr } = await supabase
+          .from("collection_badges")
+          .select("id, label, section_key, image_url")
+          .order("order_number", { ascending: true });
+        if (badgesErr) throw badgesErr;
+        if (active && (badgesData ?? []).length > 0) {
+          setCourseBadges(
+            (badgesData ?? []).map(
+              (b: {
+                id: string;
+                label: string;
+                section_key: string;
+                image_url: string;
+              }) => ({
+                id: b.id,
+                label: b.label,
+                sectionKey: b.section_key,
+                src: b.image_url,
+              }),
+            ),
+          );
+        }
+
+        const { data: cheatData, error: cheatErr } = await supabase
+          .from("collection_cheatsheets")
+          .select("id, title, section_key, resource_url")
+          .order("order_number", { ascending: true });
+        if (cheatErr) throw cheatErr;
+        if (active && (cheatData ?? []).length > 0) {
+          setCheatSheets(
+            (cheatData ?? []).map(
+              (c: {
+                id: string;
+                title: string;
+                section_key: string;
+                resource_url: string;
+              }) => ({
+                id: c.id,
+                title: c.title,
+                sectionKey: c.section_key,
+                href: c.resource_url,
+              }),
+            ),
+          );
+        }
+
+        if (currentUserId && moduleIds.length > 0) {
+          const { data: progressData, error: progressErr } = await supabase
+            .from("user_collection_module_progress")
+            .select("module_id, completed")
+            .eq("user_id", currentUserId)
+            .in("module_id", moduleIds);
+          if (progressErr) throw progressErr;
+
+          const done: Record<string, boolean> = {};
+          (progressData ?? []).forEach(
+            (row: { module_id: string; completed: boolean }) => {
+              if (row.completed) done[row.module_id] = true;
+            },
+          );
+          if (active) setDoneMap(done);
+
+          const { data: metaData, error: metaErr } = await supabase
+            .from("user_module_meta")
+            .select("module_id, is_revision")
+            .eq("user_id", currentUserId)
+            .in("module_id", moduleIds);
+          if (metaErr) throw metaErr;
+
+          const revisions: Record<string, boolean> = {};
+          (metaData ?? []).forEach(
+            (row: { module_id: string; is_revision: boolean }) => {
+              revisions[row.module_id] = !!row.is_revision;
+            },
+          );
+          if (active) {
+            setRevisionMap(revisions);
+          }
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to load collections";
+        console.error("Collections DB fetch failed:", err);
+        if (active) setDataError(message);
+      }
+    }
+
+    fetchCollectionsData();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function toggleDone(moduleId: string) {
+    const next = !doneMap[moduleId];
+    setDoneMap((prev) => ({ ...prev, [moduleId]: next }));
+
+    if (!userId) return;
+
+    try {
+      const { error } = await supabase
+        .from("user_collection_module_progress")
+        .upsert(
+          {
+            user_id: userId,
+            module_id: moduleId,
+            completed: next,
+            completed_at: next ? new Date().toISOString() : null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,module_id" },
+        );
+      if (error) throw error;
+
+      const { error: moduleErr } = await supabase
+        .from("collection_modules")
+        .update({ completed: next })
+        .eq("id", moduleId);
+      if (moduleErr) throw moduleErr;
+
+      if (next) {
+        await unlockBadgeForCompletedSection(moduleId);
+      }
+    } catch (err) {
+      console.error("Failed to save completion:", err);
+    }
   }
 
-  function toggleRevision(problem: string) {
-    setRevisionMap((prev) => ({ ...prev, [problem]: !prev[problem] }));
+  async function unlockBadgeForCompletedSection(moduleId: string) {
+    if (!userId) return;
+
+    try {
+      const { data: moduleRow, error: moduleErr } = await supabase
+        .from("collection_modules")
+        .select("section_key")
+        .eq("id", moduleId)
+        .maybeSingle();
+      if (moduleErr) throw moduleErr;
+
+      const sectionKey = moduleRow?.section_key;
+      if (!sectionKey) return;
+
+      const { count: totalCount, error: totalErr } = await supabase
+        .from("collection_modules")
+        .select("id", { count: "exact", head: true })
+        .eq("section_key", sectionKey);
+      if (totalErr) throw totalErr;
+
+      const { count: completedCount, error: completedErr } = await supabase
+        .from("user_collection_module_progress")
+        .select("module_id, collection_modules!inner(section_key)", {
+          count: "exact",
+          head: true,
+        })
+        .eq("user_id", userId)
+        .eq("completed", true)
+        .eq("collection_modules.section_key", sectionKey);
+      if (completedErr) throw completedErr;
+
+      if (!totalCount || completedCount !== totalCount) return;
+
+      const { data: badgeRow, error: badgeLookupErr } = await supabase
+        .from("collection_badges")
+        .select("id")
+        .eq("section_key", sectionKey)
+        .maybeSingle();
+      if (badgeLookupErr) throw badgeLookupErr;
+
+      const badgeId = badgeRow?.id;
+      if (!badgeId) return;
+
+      const { error: badgeErr } = await supabase.from("user_badges").upsert(
+        {
+          user_id: userId,
+          badge_id: badgeId,
+          unlocked_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,badge_id", ignoreDuplicates: true },
+      );
+      if (badgeErr) throw badgeErr;
+    } catch (err) {
+      console.error("Failed to unlock section badge:", err);
+    }
+  }
+
+  async function persistMeta(moduleId: string, nextRevision: boolean) {
+    if (!userId) return;
+    try {
+      const { error } = await supabase.from("user_module_meta").upsert(
+        {
+          user_id: userId,
+          module_id: moduleId,
+          is_revision: nextRevision,
+        },
+        { onConflict: "user_id,module_id" },
+      );
+      if (error) throw error;
+    } catch (err) {
+      console.error("Failed to save module meta:", err);
+    }
+  }
+
+  async function toggleRevision(moduleId: string) {
+    const nextRevision = !revisionMap[moduleId];
+    setRevisionMap((prev) => ({ ...prev, [moduleId]: nextRevision }));
+    await persistMeta(moduleId, nextRevision);
   }
 
   function startSolve(problem: string, problemDifficulty?: string) {
@@ -143,45 +601,131 @@ export default function Collections({
     if (pickFrom.length === 0) return;
     const selected = pickFrom[Math.floor(Math.random() * pickFrom.length)];
     setRandomPicked(selected.name);
-    setRandomOnlyProblem(selected.name);
+    setRandomOnlyModuleId(selected.id);
   }
 
   function showAllProblems() {
-    setRandomOnlyProblem(null);
+    setRandomOnlyModuleId(null);
     setRandomPicked(null);
   }
 
-  const filteredItems = items.filter((it) => {
-    if (randomOnlyProblem && it.name !== randomOnlyProblem) return false;
+  function openResource(moduleId: string, type: "doc" | "youtube") {
+    const target = resourcesMap[moduleId]?.[type];
+    if (!target || target === "#") return;
+    window.open(target, "_blank", "noopener,noreferrer");
+  }
 
-    if (activeTab === "revision" && !doneMap[it.name]) return false;
+  async function addNote(moduleId: string, moduleName: string) {
+    const note = window.prompt(`Add a note for ${moduleName}`)?.trim();
+    if (!note) return;
+    if (!userId) {
+      console.error("Login required to add notes");
+      return;
+    }
+    try {
+      const { error } = await supabase.from("user_module_notes").insert({
+        user_id: userId,
+        module_id: moduleId,
+        note,
+      });
+      if (error) throw error;
+    } catch (err) {
+      console.error("Failed to save note:", err);
+    }
+  }
+
+  const filteredItems = items.filter((it) => {
+    if (randomOnlyModuleId && it.id !== randomOnlyModuleId) return false;
+
+    if (activeTab === "revision" && !revisionMap[it.id]) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       if (!it.name.toLowerCase().includes(q)) return false;
     }
 
-    if (solvedFilter === "solved" && !doneMap[it.name]) return false;
-    if (solvedFilter === "unsolved" && doneMap[it.name]) return false;
+    if (solvedFilter === "solved" && !doneMap[it.id]) return false;
+    if (solvedFilter === "unsolved" && doneMap[it.id]) return false;
 
     if (difficultyFilter !== "all" && it.difficulty !== difficultyFilter)
       return false;
     return true;
   });
 
-  const solvedCount = items.filter((it) => doneMap[it.name]).length;
+  const solvedCount = items.filter((it) => doneMap[it.id]).length;
   const solvedPct = items.length > 0 ? (solvedCount / items.length) * 100 : 0;
 
-  // Compact right-panel stats (kept small so more widgets can be added below)
-  const easySolved = 425;
-  const easyTotal = 845;
-  const medSolved = 942;
-  const medTotal = 1773;
-  const hardSolved = 216;
-  const hardTotal = 782;
+  const easyTotal = items.filter((it) => it.difficulty === "Easy").length;
+  const medTotal = items.filter((it) => it.difficulty === "Medium").length;
+  const hardTotal = items.filter((it) => it.difficulty === "Difficult").length;
+  const easySolved = items.filter(
+    (it) => it.difficulty === "Easy" && doneMap[it.id],
+  ).length;
+  const medSolved = items.filter(
+    (it) => it.difficulty === "Medium" && doneMap[it.id],
+  ).length;
+  const hardSolved = items.filter(
+    (it) => it.difficulty === "Difficult" && doneMap[it.id],
+  ).length;
   const allSolved = easySolved + medSolved + hardSolved;
   const allTotal = easyTotal + medTotal + hardTotal;
-  const attempting = 27;
+  const attempting = Math.max(allTotal - allSolved, 0);
+  const overallPct =
+    allTotal > 0 ? Math.round((allSolved / allTotal) * 100) : 0;
+
+  const sectionTotals: Record<string, number> = {};
+  const sectionSolved: Record<string, number> = {};
+  items.forEach((item) => {
+    sectionTotals[item.sectionKey] = (sectionTotals[item.sectionKey] || 0) + 1;
+    if (doneMap[item.id]) {
+      sectionSolved[item.sectionKey] =
+        (sectionSolved[item.sectionKey] || 0) + 1;
+    }
+  });
+
+  const sectionCompletion: Record<string, boolean> = {};
+  Object.keys(sectionTotals).forEach((key) => {
+    sectionCompletion[key] =
+      sectionTotals[key] > 0 && sectionSolved[key] === sectionTotals[key];
+  });
+
+  const normalizedSectionCompletion: Record<string, boolean> = {};
+  Object.entries(sectionCompletion).forEach(([key, completed]) => {
+    normalizedSectionCompletion[normalizeSectionKey(key)] = completed;
+  });
+
+  function isSectionUnlocked(sectionKey?: string) {
+    const normalized = normalizeSectionKey(sectionKey);
+    if (!normalized) return false;
+    return !!normalizedSectionCompletion[normalized];
+  }
+
+  const unlockedCheatSheets = cheatSheets.filter((sheet) =>
+    isSectionUnlocked(sheet.sectionKey),
+  ).length;
+
+  const sectionList: SectionItem[] = (() => {
+    const map = new Map<string, SectionItem>();
+
+    sections.forEach((section) => {
+      map.set(normalizeSectionKey(section.sectionKey), section);
+    });
+
+    items.forEach((item, idx) => {
+      const key = normalizeSectionKey(item.sectionKey);
+      if (!key || map.has(key)) return;
+      map.set(key, {
+        id: `module-${key}`,
+        sectionKey: item.sectionKey,
+        title: humanizeSectionTitle(item.sectionKey),
+        orderNumber: 10000 + idx,
+      });
+    });
+
+    return Array.from(map.values()).sort(
+      (a, b) => a.orderNumber - b.orderNumber,
+    );
+  })();
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
   const easyRatio = clamp01(easySolved / easyTotal);
@@ -338,279 +882,315 @@ export default function Collections({
             </div>
 
             <div className="rounded-2xl border border-amber-500/30 bg-[#2a1b14] px-5 py-4">
+              {dataError && (
+                <p className="mb-3 text-xs text-rose-300">
+                  Could not load some collection data: {dataError}
+                </p>
+              )}
               <div className="flex flex-wrap items-center gap-5">
                 <div className="h-16 w-16 rounded-full border-4 border-black/40 bg-[#151619] flex items-center justify-center text-xl font-semibold">
-                  0%
+                  {overallPct}%
                 </div>
 
                 <div>
                   <div className="text-base text-zinc-100">
                     Overall Progress
                   </div>
-                  <div className="text-lg text-zinc-200">0 / 454</div>
+                  <div className="text-lg text-zinc-200">
+                    {allSolved} / {allTotal}
+                  </div>
                 </div>
 
                 <div className="ml-auto flex flex-wrap items-center gap-6 text-sm text-zinc-100">
                   <div className="flex items-center gap-2">
                     <span className="h-3.5 w-3.5 rounded-full bg-emerald-400" />
-                    <span>Easy&nbsp;&nbsp;0/133</span>
+                    <span>
+                      Easy&nbsp;&nbsp;{easySolved}/{easyTotal}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="h-3.5 w-3.5 rounded-full bg-amber-400" />
-                    <span>Medium&nbsp;&nbsp;0/184</span>
+                    <span>
+                      Medium&nbsp;&nbsp;{medSolved}/{medTotal}
+                    </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="h-3.5 w-3.5 rounded-full bg-rose-500" />
-                    <span>Hard&nbsp;&nbsp;0/137</span>
+                    <span>
+                      Hard&nbsp;&nbsp;{hardSolved}/{hardTotal}
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-[#111214] overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setIsBasicsOpen((v) => !v)}
-              className="w-full border-b border-white/10 px-6 py-5"
-            >
-              <div className="flex items-center gap-3">
-                <svg
-                  viewBox="0 0 24 24"
-                  className={`h-5 w-5 text-zinc-100 transition-transform ${isBasicsOpen ? "rotate-0" : "-rotate-90"}`}
-                  fill="none"
-                  aria-hidden="true"
+          <div className="space-y-4">
+            {sectionList.map((section) => {
+              const sectionItems = filteredItems.filter(
+                (it) =>
+                  (section.id && it.sectionId && it.sectionId === section.id) ||
+                  normalizeSectionKey(it.sectionKey) ===
+                    normalizeSectionKey(section.sectionKey),
+              );
+              const sectionSolved = sectionItems.filter(
+                (it) => doneMap[it.id],
+              ).length;
+              const sectionPct =
+                sectionItems.length > 0
+                  ? (sectionSolved / sectionItems.length) * 100
+                  : 0;
+              const isOpen = openSections[section.sectionKey] ?? false;
+
+              return (
+                <div
+                  key={section.id}
+                  className="rounded-2xl border border-white/10 bg-[#111214] overflow-hidden"
                 >
-                  <path
-                    d="M6 9l6 6 6-6"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-                <span className="text-base font-semibold text-zinc-100">
-                  Learn the basics
-                </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenSections((prev) => ({
+                        ...prev,
+                        [section.sectionKey]: !isOpen,
+                      }))
+                    }
+                    className="w-full border-b border-white/10 px-6 py-5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <svg
+                        viewBox="0 0 24 24"
+                        className={`h-5 w-5 text-zinc-100 transition-transform ${isOpen ? "rotate-0" : "-rotate-90"}`}
+                        fill="none"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M6 9l6 6 6-6"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span className="text-base font-semibold text-zinc-100">
+                        {section.title ||
+                          humanizeSectionTitle(section.sectionKey)}
+                      </span>
 
-                <div className="ml-auto flex items-center gap-4">
-                  <div className="h-2 w-44 rounded-full bg-white/15 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-white/40"
-                      style={{ width: `${solvedPct}%` }}
-                    />
-                  </div>
-                  <span className="text-zinc-400 text-base">
-                    {solvedCount} / {items.length}
-                  </span>
-                </div>
-              </div>
-            </button>
-
-            {isBasicsOpen && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setIsThingsOpen((v) => !v)}
-                  className="w-full border-b border-white/10 px-10 py-5"
-                >
-                  <div className="flex items-center gap-3">
-                    <svg
-                      viewBox="0 0 24 24"
-                      className={`h-5 w-5 text-zinc-100 transition-transform ${isThingsOpen ? "rotate-0" : "-rotate-90"}`}
-                      fill="none"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M6 9l6 6 6-6"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    <span className="text-base text-zinc-100">
-                      Things to Know in C++/Java/Python or any language
-                    </span>
-                  </div>
-                </button>
-
-                {isThingsOpen && (
-                  <div className="px-6 py-5">
-                    <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#0f1012]">
-                      <table className="w-full min-w-215 text-left">
-                        <thead>
-                          <tr className="border-b border-white/10 text-zinc-300">
-                            <th className="px-5 py-3 text-sm font-semibold">
-                              Status
-                            </th>
-                            <th className="px-5 py-3 text-sm font-semibold">
-                              Problem
-                            </th>
-                            <th className="px-5 py-3 text-sm font-semibold text-center">
-                              Solve
-                            </th>
-                            <th className="px-5 py-3 text-sm font-semibold">
-                              Resource
-                            </th>
-                            <th className="px-5 py-3 text-sm font-semibold text-center">
-                              Note
-                            </th>
-                            <th className="px-5 py-3 text-sm font-semibold text-center">
-                              Revision
-                            </th>
-                          </tr>
-                        </thead>
-
-                        <tbody>
-                          {filteredItems.map((it) => (
-                            <tr
-                              key={it.name}
-                              className="border-b border-white/5 last:border-0"
-                            >
-                              <td className="px-5 py-3">
-                                <button
-                                  onClick={() => toggleDone(it.name)}
-                                  className="h-7 w-7 rounded-md border border-white/20 bg-black/20 flex items-center justify-center"
-                                  aria-label={`Toggle status for ${it.name}`}
-                                >
-                                  {doneMap[it.name] ? (
-                                    <span className="text-emerald-400">✓</span>
-                                  ) : (
-                                    <span className="text-zinc-500">○</span>
-                                  )}
-                                </button>
-                              </td>
-
-                              <td className="px-5 py-3 text-zinc-100 text-sm">
-                                {it.name}
-                              </td>
-
-                              <td className="px-5 py-3 text-center align-middle">
-                                <button
-                                  onClick={() =>
-                                    startSolve(it.name, it.difficulty)
-                                  }
-                                  className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
-                                >
-                                  Solve
-                                </button>
-                              </td>
-
-                              <td className="px-5 py-3">
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    className="h-8 w-8 rounded-md border border-white/20 bg-white/5 hover:bg-white/10 flex items-center justify-center"
-                                    aria-label={`Open document resource for ${it.name}`}
-                                    title="Doc"
-                                  >
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      className="h-4 w-4 text-zinc-200"
-                                      fill="none"
-                                      aria-hidden="true"
-                                    >
-                                      <path
-                                        d="M7 3.5h7l4 4V20.5H7z"
-                                        stroke="currentColor"
-                                        strokeWidth="1.6"
-                                        strokeLinejoin="round"
-                                      />
-                                      <path
-                                        d="M14 3.5v4h4"
-                                        stroke="currentColor"
-                                        strokeWidth="1.6"
-                                        strokeLinejoin="round"
-                                      />
-                                      <path
-                                        d="M9.5 12.5h6.5M9.5 15.5h6.5"
-                                        stroke="currentColor"
-                                        strokeWidth="1.6"
-                                        strokeLinecap="round"
-                                      />
-                                    </svg>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    className="h-8 w-8 rounded-md border border-red-500/50 bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center"
-                                    aria-label={`Open YouTube resource for ${it.name}`}
-                                    title="YouTube"
-                                  >
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      className="h-4 w-4 text-red-400"
-                                      fill="currentColor"
-                                      aria-hidden="true"
-                                    >
-                                      <path d="M20.2 7.2a2.7 2.7 0 0 0-1.9-1.9C16.6 4.8 12 4.8 12 4.8s-4.6 0-6.3.5a2.7 2.7 0 0 0-1.9 1.9 28.7 28.7 0 0 0 0 9.6 2.7 2.7 0 0 0 1.9 1.9c1.7.5 6.3.5 6.3.5s4.6 0 6.3-.5a2.7 2.7 0 0 0 1.9-1.9 28.7 28.7 0 0 0 0-9.6z" />
-                                      <path
-                                        d="M10 15.2V8.8l5.2 3.2z"
-                                        fill="#0f1012"
-                                      />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </td>
-
-                              <td className="px-5 py-3 text-center align-middle">
-                                <button
-                                  type="button"
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-white/5 text-xl leading-none text-zinc-300 hover:bg-white/10 transition-colors"
-                                  aria-label={`Add note for ${it.name}`}
-                                  title="Add note"
-                                >
-                                  +
-                                </button>
-                              </td>
-                              <td className="px-5 py-3 text-center align-middle">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleRevision(it.name)}
-                                  className={`inline-flex h-9 w-9 items-center justify-center rounded-md border text-xl leading-none transition-colors ${
-                                    revisionMap[it.name]
-                                      ? "border-yellow-400/70 bg-yellow-400/15 text-yellow-300"
-                                      : "border-white/15 bg-white/5 text-zinc-300 hover:bg-white/10"
-                                  }`}
-                                  aria-label={`Toggle revision for ${it.name}`}
-                                  title="Revision"
-                                >
-                                  ★
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                          {filteredItems.length === 0 && (
-                            <tr>
-                              <td
-                                colSpan={6}
-                                className="px-5 py-8 text-center text-sm text-zinc-500"
-                              >
-                                No problems found for the selected filters.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    {randomPicked && (
-                      <div className="mt-3 flex items-center gap-3 text-sm text-zinc-400">
-                        <span>Random picked: {randomPicked}</span>
-                        <button
-                          type="button"
-                          onClick={showAllProblems}
-                          className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-zinc-200 hover:bg-white/10 transition-colors"
-                        >
-                          All problems
-                        </button>
+                      <div className="ml-auto flex items-center gap-4">
+                        <div className="h-2 w-44 rounded-full bg-white/15 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-white/40"
+                            style={{ width: `${sectionPct}%` }}
+                          />
+                        </div>
+                        <span className="text-zinc-400 text-base">
+                          {sectionSolved} / {sectionItems.length}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                )}
-              </>
+                    </div>
+                  </button>
+
+                  {isOpen && (
+                    <div className="px-6 py-5">
+                      <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#0f1012]">
+                        <table className="w-full min-w-215 text-left">
+                          <thead>
+                            <tr className="border-b border-white/10 text-zinc-300">
+                              <th className="px-5 py-3 text-sm font-semibold">
+                                Status
+                              </th>
+                              <th className="px-5 py-3 text-sm font-semibold">
+                                Problem
+                              </th>
+                              <th className="px-5 py-3 text-sm font-semibold text-center">
+                                Solve
+                              </th>
+                              <th className="px-5 py-3 text-sm font-semibold">
+                                Resource
+                              </th>
+                              <th className="px-5 py-3 text-sm font-semibold text-center">
+                                Note
+                              </th>
+                              <th className="px-5 py-3 text-sm font-semibold text-center">
+                                Revision
+                              </th>
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {sectionItems.map((it) => (
+                              <tr
+                                key={it.id}
+                                className="border-b border-white/5 last:border-0"
+                              >
+                                <td className="px-5 py-3">
+                                  {(() => {
+                                    const isCompleted =
+                                      doneMap[it.id] || !!it.completed;
+                                    return (
+                                      <button
+                                        onClick={() => toggleDone(it.id)}
+                                        className="h-7 w-7 rounded-md border border-white/20 bg-black/20 flex items-center justify-center"
+                                        aria-label={`Toggle status for ${it.name}`}
+                                      >
+                                        {isCompleted ? (
+                                          <span className="text-emerald-400">
+                                            ✓
+                                          </span>
+                                        ) : (
+                                          <span className="text-zinc-500">
+                                            ○
+                                          </span>
+                                        )}
+                                      </button>
+                                    );
+                                  })()}
+                                </td>
+
+                                <td className="px-5 py-3 text-zinc-100 text-sm">
+                                  {it.name}
+                                </td>
+
+                                <td className="px-5 py-3 text-center align-middle">
+                                  <button
+                                    onClick={() =>
+                                      startSolve(it.name, it.difficulty)
+                                    }
+                                    className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                                  >
+                                    Solve
+                                  </button>
+                                </td>
+
+                                <td className="px-5 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => openResource(it.id, "doc")}
+                                      className="h-8 w-8 rounded-md border border-white/20 bg-white/5 hover:bg-white/10 flex items-center justify-center"
+                                      aria-label={`Open document resource for ${it.name}`}
+                                      title="Doc"
+                                    >
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4 text-zinc-200"
+                                        fill="none"
+                                        aria-hidden="true"
+                                      >
+                                        <path
+                                          d="M7 3.5h7l4 4V20.5H7z"
+                                          stroke="currentColor"
+                                          strokeWidth="1.6"
+                                          strokeLinejoin="round"
+                                        />
+                                        <path
+                                          d="M14 3.5v4h4"
+                                          stroke="currentColor"
+                                          strokeWidth="1.6"
+                                          strokeLinejoin="round"
+                                        />
+                                        <path
+                                          d="M9.5 12.5h6.5M9.5 15.5h6.5"
+                                          stroke="currentColor"
+                                          strokeWidth="1.6"
+                                          strokeLinecap="round"
+                                        />
+                                      </svg>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        openResource(it.id, "youtube")
+                                      }
+                                      className="h-8 w-8 rounded-md border border-red-500/50 bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center"
+                                      aria-label={`Open YouTube resource for ${it.name}`}
+                                      title="YouTube"
+                                    >
+                                      <svg
+                                        viewBox="0 0 24 24"
+                                        className="h-4 w-4 text-red-400"
+                                        fill="currentColor"
+                                        aria-hidden="true"
+                                      >
+                                        <path d="M20.2 7.2a2.7 2.7 0 0 0-1.9-1.9C16.6 4.8 12 4.8 12 4.8s-4.6 0-6.3.5a2.7 2.7 0 0 0-1.9 1.9 28.7 28.7 0 0 0 0 9.6 2.7 2.7 0 0 0 1.9 1.9c1.7.5 6.3.5 6.3.5s4.6 0 6.3-.5a2.7 2.7 0 0 0 1.9-1.9 28.7 28.7 0 0 0 0-9.6z" />
+                                        <path
+                                          d="M10 15.2V8.8l5.2 3.2z"
+                                          fill="#0f1012"
+                                        />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </td>
+
+                                <td className="px-5 py-3 text-center align-middle">
+                                  <button
+                                    type="button"
+                                    onClick={() => addNote(it.id, it.name)}
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-white/15 bg-white/5 text-xl leading-none text-zinc-300 hover:bg-white/10 transition-colors"
+                                    aria-label={`Add note for ${it.name}`}
+                                    title="Add note"
+                                  >
+                                    +
+                                  </button>
+                                </td>
+                                <td className="px-5 py-3 text-center align-middle">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleRevision(it.id)}
+                                    className={`inline-flex h-9 w-9 items-center justify-center rounded-md border text-xl leading-none transition-colors ${
+                                      revisionMap[it.id]
+                                        ? "border-yellow-400/70 bg-yellow-400/15 text-yellow-300"
+                                        : "border-white/15 bg-white/5 text-zinc-300 hover:bg-white/10"
+                                    }`}
+                                    aria-label={`Toggle revision for ${it.name}`}
+                                    title="Revision"
+                                  >
+                                    ★
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                            {sectionItems.length === 0 && (
+                              <tr>
+                                <td
+                                  colSpan={6}
+                                  className="px-5 py-8 text-center text-sm text-zinc-500"
+                                >
+                                  No modules found in this section for the
+                                  selected filters.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {sectionList.length === 0 && (
+              <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-8 text-center text-sm text-zinc-500">
+                No sections found in collection_sections.
+              </div>
             )}
           </div>
+
+          {randomPicked && (
+            <div className="mt-3 flex items-center gap-3 text-sm text-zinc-400">
+              <span>Random picked: {randomPicked}</span>
+              <button
+                type="button"
+                onClick={showAllProblems}
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                All problems
+              </button>
+            </div>
+          )}
         </div>
 
         <aside className="lg:col-span-3 rounded-2xl border border-white/10 bg-[#111214] p-4 min-h-95">
@@ -757,26 +1337,29 @@ export default function Collections({
             </div>
           </div>
 
-          <div className="mt-4 rounded-xl border border-white/10 bg-[#1a1c1f] p-4">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xl font-semibold text-zinc-100">
-                Course Badges
-              </h4>
-              <span className="text-sm text-zinc-300">8 / 8</span>
-            </div>
-            <p className="mt-2 text-sm text-zinc-300 leading-relaxed">
-              Complete a chapter to earn a badge - collect 'em all!
-            </p>
-
-            <div className="mt-4 grid grid-cols-4 gap-3 text-center text-2xl">
-              <span>🌍</span>
-              <span>🪐</span>
-              <span>🏅</span>
-              <span>🧭</span>
-              <span>🎟️</span>
-              <span>🧩</span>
-              <span>🧱</span>
-              <span>📄</span>
+          <div className="mt-4">
+            <div className="grid grid-cols-3 gap-2">
+              {courseBadges.map((badge) => (
+                <div
+                  key={badge.label}
+                  className="group relative flex justify-center py-1"
+                >
+                  <img
+                    src={badge.src}
+                    alt={badge.label}
+                    className={`h-11 w-11 object-contain ${
+                      isSectionUnlocked(badge.sectionKey)
+                        ? "opacity-100"
+                        : "opacity-35 grayscale"
+                    }`}
+                  />
+                  <span className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/15 bg-[#0f1115]/95 px-2 py-1 text-[10px] text-zinc-100 opacity-0 shadow-lg shadow-black/40 transition-opacity duration-150 group-hover:opacity-100">
+                    {isSectionUnlocked(badge.sectionKey)
+                      ? badge.label
+                      : `${badge.label} (Locked)`}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -785,49 +1368,62 @@ export default function Collections({
               <h4 className="text-xl font-semibold text-zinc-100">
                 Cheat Sheets
               </h4>
-              <span className="text-sm text-zinc-300">2 / 2</span>
+              <span className="text-sm text-zinc-300">
+                {unlockedCheatSheets} / {cheatSheets.length}
+              </span>
             </div>
             <p className="mt-2 text-sm text-zinc-300 leading-relaxed">
-              Unlock printables with functions and concepts.
+              Unlock printables
             </p>
 
             <div className="mt-4 space-y-3">
-              <a
-                href="#"
-                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-zinc-100 hover:bg-white/10 transition-colors"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <span className="text-xl">📄</span>
-                  <span className="text-base">Python: Basics I</span>
-                </span>
-                <span className="text-sm">↗</span>
-              </a>
+              {cheatSheets.map((sheet) => {
+                const unlocked = isSectionUnlocked(sheet.sectionKey);
 
-              <a
-                href="#"
-                className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-zinc-100 hover:bg-white/10 transition-colors"
-              >
-                <span className="inline-flex items-center gap-2">
-                  <span className="text-xl">📄</span>
-                  <span className="text-base">Python: Basics II</span>
-                </span>
-                <span className="text-sm">↗</span>
-              </a>
+                if (!unlocked) {
+                  return (
+                    <div
+                      key={sheet.title}
+                      className="flex items-center justify-between rounded-lg border border-white/10 bg-white/3 px-3 py-2 text-zinc-500"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-xl">🔒</span>
+                        <span className="text-base">{sheet.title}</span>
+                      </span>
+                      <span className="text-xs">Locked</span>
+                    </div>
+                  );
+                }
+
+                return (
+                  <a
+                    key={sheet.title}
+                    href={sheet.href || "#"}
+                    className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-zinc-100 hover:bg-white/10 transition-colors"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <span className="text-xl">📄</span>
+                      <span className="text-base">{sheet.title}</span>
+                    </span>
+                    <span className="text-sm">↗</span>
+                  </a>
+                );
+              })}
             </div>
           </div>
 
           <div className="mt-4 rounded-xl border border-white/10 bg-[#1a1c1f] p-4">
             <h4 className="text-xl font-semibold text-zinc-100">Need Help?</h4>
             <p className="mt-2 text-sm text-zinc-300">
-              Ask questions in our community!
+              Need assistance? Reach out anytime.
             </p>
 
-            <button
-              type="button"
-              className="mt-4 w-full rounded-md border border-white/20 bg-black/20 py-2 text-base text-zinc-100 hover:bg-white/10 transition-colors"
+            <a
+              href="/help"
+              className="mt-4 flex w-full items-center justify-center rounded-md border border-white/20 bg-black/20 px-4 py-2 text-base text-zinc-100 hover:bg-white/10 transition-colors"
             >
-              Go to Community
-            </button>
+              Reach Us Out!
+            </a>
           </div>
         </aside>
       </div>
