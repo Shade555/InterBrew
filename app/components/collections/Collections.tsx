@@ -16,6 +16,7 @@ type ModuleItem = {
   sectionKey: string;
   sectionId?: string;
   completed?: boolean;
+  content?: string | null;
 };
 
 type BadgeItem = {
@@ -35,6 +36,7 @@ type CheatSheetItem = {
 type ModuleResources = {
   doc?: string;
   youtube?: string;
+  docContent?: string | null;
 };
 
 type SectionItem = {
@@ -43,6 +45,75 @@ type SectionItem = {
   title: string;
   orderNumber: number;
 };
+
+function normalizeExternalUrl(rawUrl: string) {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^\/\//.test(trimmed)) return `https:${trimmed}`;
+  if (/^[\w.-]+\.[a-z]{2,}([/?#].*)?$/i.test(trimmed)) {
+    return `https://${trimmed}`;
+  }
+  return trimmed;
+}
+
+function parseYouTubeTimeToSeconds(raw?: string | null) {
+  if (!raw) return null;
+  if (/^\d+$/.test(raw)) return Number(raw);
+
+  const match = raw.match(/(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/i);
+  if (!match) return null;
+
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const total = hours * 3600 + minutes * 60 + seconds;
+  return total > 0 ? total : null;
+}
+
+function toYouTubeEmbedUrl(rawUrl: string) {
+  try {
+    const normalized = normalizeExternalUrl(rawUrl);
+    if (/^[a-zA-Z0-9_-]{11}$/.test(normalized)) {
+      return `https://www.youtube.com/embed/${normalized}?autoplay=1&rel=0&modestbranding=1`;
+    }
+
+    const url = new URL(normalized);
+    const host = url.hostname.toLowerCase();
+    let videoId = "";
+    const startTime =
+      url.searchParams.get("t") || url.searchParams.get("start");
+
+    if (host.includes("youtu.be")) {
+      videoId = url.pathname.replace(/^\//, "").split("/")[0] || "";
+    } else if (host.includes("youtube.com")) {
+      if (url.pathname === "/watch") {
+        videoId = url.searchParams.get("v") || "";
+      } else if (url.pathname.startsWith("/shorts/")) {
+        videoId = url.pathname.split("/shorts/")[1]?.split("/")[0] || "";
+      } else if (url.pathname.startsWith("/live/")) {
+        videoId = url.pathname.split("/live/")[1]?.split("/")[0] || "";
+      } else if (url.pathname.startsWith("/embed/")) {
+        videoId = url.pathname.split("/embed/")[1]?.split("/")[0] || "";
+      }
+    }
+
+    if (!videoId) return null;
+
+    const params = new URLSearchParams({
+      autoplay: "1",
+      rel: "0",
+      modestbranding: "1",
+    });
+
+    const startInSeconds = parseYouTubeTimeToSeconds(startTime);
+    if (startInSeconds) params.set("start", String(startInSeconds));
+
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+  } catch {
+    return null;
+  }
+}
 
 function normalizeSectionKey(value?: string | null) {
   return String(value || "")
@@ -246,6 +317,32 @@ export default function Collections({
   const [userId, setUserId] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string>("");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [youtubePopup, setYoutubePopup] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
+  const [docPopup, setDocPopup] = useState<{
+    title: string;
+    content: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!youtubePopup && !docPopup) return;
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setYoutubePopup(null);
+        setDocPopup(null);
+      }
+    }
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [youtubePopup, docPopup]);
 
   useEffect(() => {
     let active = true;
@@ -300,12 +397,29 @@ export default function Collections({
           },
         );
 
-        const { data: modulesData, error: modulesErr } = await supabase
+        let modulesData: any[] | null = null;
+        let modulesErr: any = null;
+
+        // Try fetching with content column
+        ({ data: modulesData, error: modulesErr } = await supabase
           .from("collection_modules")
           .select(
-            "id, title, difficulty, section_key, section_id, completed, order_number, collection_sections(section_key)",
+            "id, title, difficulty, section_key, section_id, completed, content, order_number, collection_sections(section_key)",
           )
-          .order("order_number", { ascending: true });
+          .order("order_number", { ascending: true }));
+
+        // If content column doesn't exist, retry without it
+        if (modulesErr) {
+          const retry = await supabase
+            .from("collection_modules")
+            .select(
+              "id, title, difficulty, section_key, section_id, completed, order_number, collection_sections(section_key)",
+            )
+            .order("order_number", { ascending: true });
+          modulesData = retry.data;
+          modulesErr = retry.error;
+        }
+
         if (modulesErr) throw modulesErr;
 
         const sortableModules = (modulesData ?? [])
@@ -317,6 +431,7 @@ export default function Collections({
               section_key: string;
               section_id: string | null;
               completed?: boolean | null;
+              content?: string | null;
               order_number: number;
               collection_sections?: Array<{ section_key?: string }>;
             }) => {
@@ -330,6 +445,7 @@ export default function Collections({
                 sectionKey: m.section_key || relatedSectionKey || "unassigned",
                 sectionId: m.section_id || undefined,
                 completed: !!m.completed,
+                content: m.content || null,
                 orderNumber: m.order_number,
               };
             },
@@ -351,112 +467,136 @@ export default function Collections({
 
         const moduleIds = normalizedModules.map((m) => m.id);
         if (moduleIds.length > 0) {
-          const { data: resourcesData, error: resourcesErr } = await supabase
-            .from("collection_resources")
-            .select("module_id, type, url")
-            .in("module_id", moduleIds);
-          if (resourcesErr) throw resourcesErr;
+          try {
+            const { data: resourcesData, error: resourcesErr } = await supabase
+              .from("collection_resources")
+              .select("module_id, type, url, content")
+              .in("module_id", moduleIds);
+            if (resourcesErr) throw resourcesErr;
 
-          const resourceLookup: Record<string, ModuleResources> = {};
-          (resourcesData ?? []).forEach(
-            (r: {
-              module_id: string;
-              type: "doc" | "youtube";
-              url: string;
-            }) => {
-              if (!resourceLookup[r.module_id])
-                resourceLookup[r.module_id] = {};
-              if (r.type === "doc" && !resourceLookup[r.module_id].doc) {
-                resourceLookup[r.module_id].doc = r.url;
-              }
-              if (
-                r.type === "youtube" &&
-                !resourceLookup[r.module_id].youtube
-              ) {
-                resourceLookup[r.module_id].youtube = r.url;
-              }
-            },
-          );
-          if (active) setResourcesMap(resourceLookup);
+            const resourceLookup: Record<string, ModuleResources> = {};
+            (resourcesData ?? []).forEach(
+              (r: {
+                module_id: string;
+                type: string;
+                url: string;
+                content?: string | null;
+              }) => {
+                if (!resourceLookup[r.module_id])
+                  resourceLookup[r.module_id] = {};
+
+                // Allow a single DB row to provide both resources:
+                // - content => doc popup
+                // - url => youtube popup
+                if (typeof r.content === "string" && r.content.trim()) {
+                  resourceLookup[r.module_id].docContent = r.content;
+                }
+
+                if (typeof r.url === "string" && r.url.trim()) {
+                  resourceLookup[r.module_id].youtube = r.url;
+                  resourceLookup[r.module_id].doc = r.url;
+                }
+              },
+            );
+            if (active) setResourcesMap(resourceLookup);
+          } catch (err) {
+            console.warn("Failed to load collection resources:", err);
+          }
         }
 
-        const { data: badgesData, error: badgesErr } = await supabase
-          .from("collection_badges")
-          .select("id, label, section_key, image_url")
-          .order("order_number", { ascending: true });
-        if (badgesErr) throw badgesErr;
-        if (active && (badgesData ?? []).length > 0) {
-          setCourseBadges(
-            (badgesData ?? []).map(
-              (b: {
-                id: string;
-                label: string;
-                section_key: string;
-                image_url: string;
-              }) => ({
-                id: b.id,
-                label: b.label,
-                sectionKey: b.section_key,
-                src: b.image_url,
-              }),
-            ),
-          );
+        try {
+          const { data: badgesData, error: badgesErr } = await supabase
+            .from("collection_badges")
+            .select("id, label, section_key, image_url")
+            .order("order_number", { ascending: true });
+          if (badgesErr) throw badgesErr;
+          if (active && (badgesData ?? []).length > 0) {
+            setCourseBadges(
+              (badgesData ?? []).map(
+                (b: {
+                  id: string;
+                  label: string;
+                  section_key: string;
+                  image_url: string;
+                }) => ({
+                  id: b.id,
+                  label: b.label,
+                  sectionKey: b.section_key,
+                  src: b.image_url,
+                }),
+              ),
+            );
+          }
+        } catch (err) {
+          console.warn("Failed to load badges:", err);
         }
 
-        const { data: cheatData, error: cheatErr } = await supabase
-          .from("collection_cheatsheets")
-          .select("id, title, section_key, resource_url")
-          .order("order_number", { ascending: true });
-        if (cheatErr) throw cheatErr;
-        if (active && (cheatData ?? []).length > 0) {
-          setCheatSheets(
-            (cheatData ?? []).map(
-              (c: {
-                id: string;
-                title: string;
-                section_key: string;
-                resource_url: string;
-              }) => ({
-                id: c.id,
-                title: c.title,
-                sectionKey: c.section_key,
-                href: c.resource_url,
-              }),
-            ),
-          );
+        try {
+          const { data: cheatData, error: cheatErr } = await supabase
+            .from("collection_cheatsheets")
+            .select("id, title, section_key, resource_url")
+            .order("order_number", { ascending: true });
+          if (cheatErr) throw cheatErr;
+          if (active && (cheatData ?? []).length > 0) {
+            setCheatSheets(
+              (cheatData ?? []).map(
+                (c: {
+                  id: string;
+                  title: string;
+                  section_key: string;
+                  resource_url: string;
+                }) => ({
+                  id: c.id,
+                  title: c.title,
+                  sectionKey: c.section_key,
+                  href: c.resource_url,
+                }),
+              ),
+            );
+          }
+        } catch (err) {
+          console.warn("Failed to load cheatsheets:", err);
         }
 
         if (currentUserId && moduleIds.length > 0) {
-          const { data: progressData, error: progressErr } = await supabase
-            .from("user_collection_module_progress")
-            .select("module_id, completed")
-            .eq("user_id", currentUserId)
-            .in("module_id", moduleIds);
-          if (progressErr) throw progressErr;
+          try {
+            const { data: progressData, error: progressErr } = await supabase
+              .from("user_collection_module_progress")
+              .select("module_id, completed")
+              .eq("user_id", currentUserId)
+              .in("module_id", moduleIds);
+            if (progressErr) throw progressErr;
 
-          const done: Record<string, boolean> = {};
-          (progressData ?? []).forEach(
-            (row: { module_id: string; completed: boolean }) => {
-              if (row.completed) done[row.module_id] = true;
-            },
-          );
-          if (active) setDoneMap(done);
+            const done: Record<string, boolean> = {};
+            (progressData ?? []).forEach(
+              (row: { module_id: string; completed: boolean }) => {
+                if (row.completed) done[row.module_id] = true;
+              },
+            );
+            if (active) setDoneMap(done);
+          } catch (err) {
+            console.warn("Failed to load progress data:", err);
+          }
 
-          const { data: metaData, error: metaErr } = await supabase
-            .from("user_module_meta")
-            .select("module_id, is_revision")
-            .eq("user_id", currentUserId)
-            .in("module_id", moduleIds);
-          if (metaErr) throw metaErr;
+          try {
+            const { data: metaData, error: metaErr } = await supabase
+              .from("user_module_meta")
+              .select("module_id, is_revision")
+              .eq("user_id", currentUserId)
+              .in("module_id", moduleIds);
+            if (metaErr) throw metaErr;
 
-          const revisions: Record<string, boolean> = {};
-          (metaData ?? []).forEach(
-            (row: { module_id: string; is_revision: boolean }) => {
-              revisions[row.module_id] = !!row.is_revision;
-            },
-          );
-          if (active) {
-            setRevisionMap(revisions);
+            const revisions: Record<string, boolean> = {};
+            (metaData ?? []).forEach(
+              (row: { module_id: string; is_revision: boolean }) => {
+                revisions[row.module_id] = !!row.is_revision;
+              },
+            );
+            if (active) {
+              setRevisionMap(revisions);
+            }
+          } catch (err) {
+            console.warn("Failed to load revision data:", err);
           }
         }
       } catch (err) {
@@ -609,9 +749,51 @@ export default function Collections({
     setRandomPicked(null);
   }
 
-  function openResource(moduleId: string, type: "doc" | "youtube") {
-    const target = resourcesMap[moduleId]?.[type];
-    if (!target || target === "#") return;
+  function openResource(
+    moduleId: string,
+    type: "doc" | "youtube",
+    moduleName?: string,
+  ) {
+    if (type === "doc") {
+      const docContent = resourcesMap[moduleId]?.docContent?.trim();
+
+      if (docContent) {
+        setDocPopup({
+          title: moduleName ? `${moduleName} - Content` : "Module Content",
+          content: docContent,
+        });
+        return;
+      }
+
+      // Always show popup with fallback message instead of failing silently
+      setDocPopup({
+        title: moduleName ? `${moduleName} - Content` : "Module Content",
+        content:
+          "No content found for this module yet. Add text in collection_resources.content column to display it here.",
+      });
+      return;
+    }
+
+    const target = normalizeExternalUrl(resourcesMap[moduleId]?.[type] || "");
+    if (!target || target === "#") {
+      setDocPopup({
+        title: moduleName ? `${moduleName} - Video` : "YouTube Video",
+        content: "No YouTube link found for this module yet.",
+      });
+      return;
+    }
+
+    if (type === "youtube") {
+      const embedUrl = toYouTubeEmbedUrl(target);
+      if (embedUrl) {
+        setYoutubePopup({
+          url: embedUrl,
+          title: moduleName ? `${moduleName} - Video` : "YouTube Video",
+        });
+        return;
+      }
+    }
+
     window.open(target, "_blank", "noopener,noreferrer");
   }
 
@@ -1102,7 +1284,7 @@ export default function Collections({
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        openResource(it.id, "youtube")
+                                        openResource(it.id, "youtube", it.name)
                                       }
                                       className="h-8 w-8 rounded-md border border-red-500/50 bg-red-500/10 hover:bg-red-500/20 flex items-center justify-center"
                                       aria-label={`Open YouTube resource for ${it.name}`}
@@ -1437,6 +1619,73 @@ export default function Collections({
             setTopic(null);
           }}
         />
+      )}
+
+      {youtubePopup && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => setYoutubePopup(null)}
+        >
+          <div
+            className="w-full max-w-4xl overflow-hidden rounded-2xl border border-white/15 bg-[#0f1115] shadow-2xl shadow-black/70"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <h3 className="truncate pr-3 text-sm font-semibold text-zinc-100">
+                {youtubePopup.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setYoutubePopup(null)}
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="aspect-video w-full bg-black">
+              <iframe
+                src={youtubePopup.url}
+                title={youtubePopup.title}
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {docPopup && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => setDocPopup(null)}
+        >
+          <div
+            className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-[#0f1115] shadow-2xl shadow-black/70 max-h-96 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <h3 className="truncate pr-3 text-sm font-semibold text-zinc-100">
+                {docPopup.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDocPopup(null)}
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-4 py-4">
+              <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed">
+                {docPopup.content}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
