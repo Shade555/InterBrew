@@ -518,16 +518,25 @@ export default function Collections({
         .select("section_key")
         .eq("id", moduleId)
         .maybeSingle();
-      if (moduleErr) throw moduleErr;
+      if (moduleErr) {
+        console.error("Step 1 - Get module section_key failed:", moduleErr?.message || moduleErr);
+        throw moduleErr;
+      }
 
       const sectionKey = moduleRow?.section_key;
-      if (!sectionKey) return;
+      if (!sectionKey) {
+        console.log("Step 2 - No section_key found for module:", moduleId);
+        return;
+      }
 
       const { count: totalCount, error: totalErr } = await supabase
         .from("collection_modules")
         .select("id", { count: "exact", head: true })
         .eq("section_key", sectionKey);
-      if (totalErr) throw totalErr;
+      if (totalErr) {
+        console.error("Step 3 - Count total modules failed:", totalErr?.message || totalErr);
+        throw totalErr;
+      }
 
       const { count: completedCount, error: completedErr } = await supabase
         .from("user_collection_module_progress")
@@ -538,20 +547,34 @@ export default function Collections({
         .eq("user_id", userId)
         .eq("completed", true)
         .eq("collection_modules.section_key", sectionKey);
-      if (completedErr) throw completedErr;
+      if (completedErr) {
+        console.error("Step 4 - Count completed modules failed:", completedErr?.message || completedErr);
+        throw completedErr;
+      }
 
-      if (!totalCount || completedCount !== totalCount) return;
+      console.log(`Section: ${sectionKey}, Total: ${totalCount}, Completed: ${completedCount}`);
+      if (!totalCount || completedCount !== totalCount) {
+        console.log("Not all modules completed yet");
+        return;
+      }
 
-      const { data: badgeRow, error: badgeLookupErr } = await supabase
+      const { data: badgeRows, error: badgeLookupErr } = await supabase
         .from("collection_badges")
         .select("id")
         .eq("section_key", sectionKey)
-        .maybeSingle();
-      if (badgeLookupErr) throw badgeLookupErr;
+        .limit(1);
+      if (badgeLookupErr) {
+        console.error("Step 5 - Lookup badge failed:", badgeLookupErr?.message || badgeLookupErr);
+        throw badgeLookupErr;
+      }
 
-      const badgeId = badgeRow?.id;
-      if (!badgeId) return;
+      const badgeId = badgeRows?.[0]?.id;
+      if (!badgeId) {
+        console.log("No badge found for section:", sectionKey);
+        return;
+      }
 
+      console.log("Unlocking badge:", badgeId, "for section:", sectionKey);
       const { error: badgeErr } = await supabase.from("user_badges").upsert(
         {
           user_id: userId,
@@ -560,9 +583,14 @@ export default function Collections({
         },
         { onConflict: "user_id,badge_id", ignoreDuplicates: true },
       );
-      if (badgeErr) throw badgeErr;
+      if (badgeErr) {
+        console.error("Step 6 - Upsert user_badges failed:", badgeErr?.message || badgeErr);
+        throw badgeErr;
+      }
+      
+      console.log("Badge unlocked successfully!");
     } catch (err) {
-      console.error("Failed to unlock section badge:", err);
+      console.error("Failed to unlock section badge:", err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -594,7 +622,33 @@ export default function Collections({
     if (problemDifficulty === "Easy") setMockDifficulty("Beginner");
     else if (problemDifficulty === "Difficult") setMockDifficulty("Advanced");
     else setMockDifficulty("Intermediate");
+
+    // Update current module in dashboard via API
+    if (userId) {
+      const updateCurrentModule = async () => {
+        try {
+          const response = await fetch("/api/update-current-module", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId,
+              moduleName: problem,
+              modulePath: "/collections",
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+          }
+        } catch (err) {
+          // Error silently handled
+        }
+      };
+      updateCurrentModule();
+    }
   }
+
+
 
   function pickRandomProblem() {
     const pickFrom = items;

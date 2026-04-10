@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -556,9 +557,19 @@ function Calendar() {
 }
 
 export default function Dashboard() {
-  const [aiScore] = useState(78);
+  const router = useRouter();
+  const [aiScore, setAiScore] = useState(0);
+  const [recommendation, setRecommendation] = useState("");
+  const [loadingAiReport, setLoadingAiReport] = useState(true);
+  const [regeneratingReport, setRegeneratingReport] = useState(false);
   const [showGridLines, setShowGridLines] = useState(true);
   const [yAxisMetric, setYAxisMetric] = useState<"improvement" | "accuracy" | "readiness">("improvement");
+  const [badges, setBadges] = useState<Array<any>>([]);
+  const [unlockedSections, setUnlockedSections] = useState<Record<string, boolean>>({});
+  const [loadingBadges, setLoadingBadges] = useState(true);
+  const [showCertificateModal, setShowCertificateModal] = useState(false);
+  const [currentModule, setCurrentModule] = useState<{ name: string; path: string } | null>(null);
+  const [loadingCurrentModule, setLoadingCurrentModule] = useState(true);
 
   // Sample data for the last 4 weeks
   const graphData = [55, 62, 48, 65, 58, 72, 60, 78, 65, 82, 75, 88, 80, 92, 85, 95];
@@ -569,6 +580,191 @@ export default function Dashboard() {
     accuracy: "Accuracy %",
     readiness: "Readiness Score"
   };
+
+  // Fetch AI Report from Groq
+  useEffect(() => {
+    const fetchAiReport = async () => {
+      try {
+        setLoadingAiReport(true);
+        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        if (userErr) throw userErr;
+        const userId = user?.id;
+
+        if (!userId) {
+          setAiScore(0);
+          setRecommendation("Please log in to see your personalized report.");
+          setLoadingAiReport(false);
+          return;
+        }
+
+        const response = await fetch("/api/ai-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("AI Report API error:", response.status, errorText);
+          throw new Error(`Failed to fetch AI report: ${response.status}`);
+        }
+
+        const data = await response.json();
+        setAiScore(data.score || 0);
+        setRecommendation(data.recommendation || "Keep practicing to improve!");
+      } catch (err) {
+        console.error("Error fetching AI report:", err);
+        setAiScore(65);
+        setRecommendation("Keep practicing to improve your interview readiness.");
+      } finally {
+        setLoadingAiReport(false);
+      }
+    };
+
+    fetchAiReport();
+  }, []);
+
+  // Regenerate AI Report
+  const handleRegenerateReport = async () => {
+    try {
+      setRegeneratingReport(true);
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      if (userErr) throw userErr;
+      const userId = user?.id;
+
+      if (!userId) return;
+
+      const response = await fetch("/api/ai-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, forceRefresh: true }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("AI Report regeneration error:", response.status, errorText);
+        throw new Error(`Failed to regenerate report: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setAiScore(data.score || 0);
+      setRecommendation(data.recommendation || "Keep practicing to improve!");
+    } catch (err) {
+      console.error("Error regenerating AI report:", err);
+    } finally {
+      setRegeneratingReport(false);
+    }
+  };
+
+  // Fetch badges from collections
+  useEffect(() => {
+    const fetchBadges = async () => {
+      try {
+        setLoadingBadges(true);
+        
+        // Get current user
+        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        if (userErr) throw userErr;
+        const userId = user?.id;
+
+        // Fetch all collection badges
+        const { data: badgesData, error: badgesErr } = await supabase
+          .from("collection_badges")
+          .select("id, label, image_url, section_key")
+          .order("order_number", { ascending: true });
+        
+        if (badgesErr) throw badgesErr;
+        setBadges(badgesData ?? []);
+
+        // Determine which batches are unlocked based on section completion
+        if (userId) {
+          const unlockedMap: Record<string, boolean> = {};
+          let anyUnlocked = false;
+
+          // For each badge, check if all modules in that section are completed
+          for (const badge of (badgesData ?? [])) {
+            // Count total modules in this section
+            const { count: totalCount, error: totalErr } = await supabase
+              .from("collection_modules")
+              .select("id", { count: "exact", head: true })
+              .eq("section_key", badge.section_key);
+            if (totalErr) continue;
+
+            // Count user's completed modules in this section
+            const { count: completedCount, error: completedErr } = await supabase
+              .from("user_collection_module_progress")
+              .select("module_id, collection_modules!inner(section_key)", {
+                count: "exact",
+                head: true,
+              })
+              .eq("user_id", userId)
+              .eq("completed", true)
+              .eq("collection_modules.section_key", badge.section_key);
+            if (completedErr) continue;
+
+            // Unlock if all modules completed
+            const isUnlocked = totalCount && completedCount && completedCount === totalCount;
+            if (isUnlocked) {
+              unlockedMap[badge.section_key] = true;
+              anyUnlocked = true;
+            }
+          }
+
+          setUnlockedSections(unlockedMap);
+          console.log("Unlocked sections:", unlockedMap, "Any unlocked:", anyUnlocked);
+        }
+      } catch (err: any) {
+        console.error("Error fetching badges:", err?.message || err);
+        // Use placeholder badges on error
+        const placeholders = [
+          { id: "1", label: "Foundation", image_url: "/images/Foundation.png", section_key: "foundation" },
+          { id: "2", label: "Scheduling", image_url: "/images/Scheduling.png", section_key: "cpu-scheduling" },
+          { id: "3", label: "Concurrency", image_url: "/images/Concurrency.png", section_key: "thread-management" },
+        ];
+        setBadges(placeholders);
+      } finally {
+        setLoadingBadges(false);
+      }
+    };
+
+    fetchBadges();
+  }, []);
+
+  // Fetch current module from user_dashboard
+  useEffect(() => {
+    const fetchCurrentModule = async () => {
+      try {
+        setLoadingCurrentModule(true);
+        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        if (userErr) throw userErr;
+        const userId = user?.id;
+
+        if (!userId) {
+          setLoadingCurrentModule(false);
+          return;
+        }
+
+        const { data: dashboardData } = await supabase
+          .from("user_dashboard")
+          .select("current_module_name, current_module_path")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (dashboardData?.current_module_name && dashboardData?.current_module_path) {
+          setCurrentModule({
+            name: dashboardData.current_module_name,
+            path: dashboardData.current_module_path,
+          });
+        }
+      } catch (err) {
+        console.error("Error fetching current module:", err);
+      } finally {
+        setLoadingCurrentModule(false);
+      }
+    };
+
+    fetchCurrentModule();
+  }, []);
 
   // Generate SVG path for the graph
   const generateGraphPath = () => {
@@ -593,69 +789,93 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 mb-4 auto-rows-max lg:auto-rows-fr">
         {/* Left Column - AI Report */}
         <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-8">
-          <h2 className="text-base font-semibold text-zinc-100 mb-8">
-            AI Report
-          </h2>
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-base font-semibold text-zinc-100">
+              AI Report
+            </h2>
+            {/* Regenerate Button */}
+            <button
+              onClick={handleRegenerateReport}
+              disabled={regeneratingReport || loadingAiReport}
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
+                regeneratingReport
+                  ? "border-yellow-400/70 bg-yellow-400/15 text-yellow-300 animate-pulse"
+                  : "border-white/15 bg-white/5 text-zinc-300 hover:bg-white/10"
+              }`}
+              aria-label="Regenerate AI report"
+              title="Regenerate report"
+            >
+              ♻️
+            </button>
+          </div>
           <div className="flex flex-col items-center justify-center gap-6">
-            {/* Score Ring */}
-            <div className="relative w-48 h-48">
-              <svg
-                width="200"
-                height="200"
-                viewBox="0 0 200 200"
-                className="drop-shadow-lg"
-              >
-                {/* Background Circle */}
-                <circle
-                  cx="100"
-                  cy="100"
-                  r="90"
-                  fill="none"
-                  stroke="rgba(255,255,255,0.08)"
-                  strokeWidth="14"
-                />
-                {/* Progress Circle */}
-                <circle
-                  cx="100"
-                  cy="100"
-                  r="90"
-                  fill="none"
-                  stroke="url(#scoreGradient)"
-                  strokeWidth="14"
-                  strokeDasharray={`${(aiScore / 100) * 565.5} 565.5`}
-                  strokeLinecap="round"
-                  transform="rotate(-90 100 100)"
-                  className="transition-all duration-500"
-                />
-                <defs>
-                  <linearGradient
-                    id="scoreGradient"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="100%"
-                  >
-                    <stop offset="0%" stopColor="#10b981" />
-                    <stop offset="100%" stopColor="#06b6d4" />
-                  </linearGradient>
-                </defs>
-              </svg>
-              {/* Center Text */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-4xl font-bold text-emerald-400">
-                  {aiScore}
-                </span>
-                <span className="text-xs text-zinc-400 uppercase tracking-wide">
-                  Score
-                </span>
+            {loadingAiReport ? (
+              <div className="flex flex-col items-center justify-center gap-4 h-48">
+                <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
+                <p className="text-sm text-zinc-400">Analyzing your progress...</p>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Score Ring */}
+                <div className="relative w-48 h-48">
+                  <svg
+                    width="200"
+                    height="200"
+                    viewBox="0 0 200 200"
+                    className="drop-shadow-lg"
+                  >
+                    {/* Background Circle */}
+                    <circle
+                      cx="100"
+                      cy="100"
+                      r="90"
+                      fill="none"
+                      stroke="rgba(255,255,255,0.08)"
+                      strokeWidth="14"
+                    />
+                    {/* Progress Circle */}
+                    <circle
+                      cx="100"
+                      cy="100"
+                      r="90"
+                      fill="none"
+                      stroke="url(#scoreGradient)"
+                      strokeWidth="14"
+                      strokeDasharray={`${(aiScore / 100) * 565.5} 565.5`}
+                      strokeLinecap="round"
+                      transform="rotate(-90 100 100)"
+                      className="transition-all duration-500"
+                    />
+                    <defs>
+                      <linearGradient
+                        id="scoreGradient"
+                        x1="0%"
+                        y1="0%"
+                        x2="100%"
+                        y2="100%"
+                      >
+                        <stop offset="0%" stopColor="#10b981" />
+                        <stop offset="100%" stopColor="#06b6d4" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  {/* Center Text */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-4xl font-bold text-emerald-400">
+                      {aiScore}
+                    </span>
+                    <span className="text-xs text-zinc-400 uppercase tracking-wide">
+                      Ready
+                    </span>
+                  </div>
+                </div>
 
-            {/* Message */}
-            <p className="text-center text-zinc-300 text-sm max-w-xs leading-relaxed">
-              You're on track! Keep practicing to improve your interview
-              readiness.
-            </p>
+                {/* Message */}
+                <p className="text-center text-zinc-300 text-sm max-w-xs leading-relaxed">
+                  {recommendation}
+                </p>
+              </>
+            )}
           </div>
         </div>
 
@@ -666,16 +886,33 @@ export default function Dashboard() {
             <h2 className="text-base font-semibold text-zinc-100 mb-4">
               Badges
             </h2>
-            <div className="flex gap-3">
-              <div className="h-20 w-20 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-2xl hover:bg-white/10 transition-colors cursor-pointer">
-                🏆
-              </div>
-              <div className="h-20 w-20 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-2xl hover:bg-white/10 transition-colors cursor-pointer">
-                ⭐
-              </div>
-              <div className="h-20 w-20 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center text-2xl hover:bg-white/10 transition-colors cursor-pointer">
-                🎯
-              </div>
+            <div className="flex gap-3 flex-wrap">
+              {loadingBadges ? (
+                <p className="text-zinc-400 text-sm">Loading badges...</p>
+              ) : badges.filter(b => unlockedSections[b.section_key]).length > 0 ? (
+                badges
+                  .filter(b => unlockedSections[b.section_key])
+                  .map((badge) => (
+                    <div
+                      key={badge.id}
+                      className="group relative flex justify-center"
+                    >
+                      <img
+                        src={badge.image_url || "/images/placeholder.png"}
+                        alt={badge.label}
+                        className="h-20 w-20 object-contain rounded-lg border border-white/10 bg-white/5 p-2 hover:bg-white/10 transition-colors cursor-pointer"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                      <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/15 bg-[#0f1115]/95 px-2 py-1 text-[10px] text-zinc-100 opacity-0 shadow-lg shadow-black/40 transition-opacity duration-150 group-hover:opacity-100">
+                        {badge.label}
+                      </span>
+                    </div>
+                  ))
+              ) : (
+                <p className="text-zinc-400 text-sm">No badges unlocked yet</p>
+              )}
             </div>
           </div>
 
@@ -684,24 +921,82 @@ export default function Dashboard() {
             <h2 className="text-base font-semibold text-zinc-100 mb-4">
               Certificates
             </h2>
-            <div className="flex gap-3">
-              <div className="h-20 flex-1 rounded-lg border border-white/10 bg-white/5 text-zinc-300 text-sm hover:bg-white/10 transition-colors cursor-pointer flex items-center justify-center">
-                Certificate #1
-              </div>
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={() => setShowCertificateModal(true)}
+                className="group relative"
+              >
+                <img
+                  src="/images/certificate.png"
+                  alt="Certificate"
+                  className="h-20 w-20 object-contain rounded-lg border border-white/10 bg-white/5 p-2 hover:bg-white/10 transition-colors cursor-pointer"
+                />
+                <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/15 bg-[#0f1115]/95 px-2 py-1 text-[10px] text-zinc-100 opacity-0 shadow-lg shadow-black/40 transition-opacity duration-150 group-hover:opacity-100">
+                  Certificate
+                </span>
+              </button>
             </div>
           </div>
+
+          {/* Certificate Modal */}
+          {showCertificateModal && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+              onClick={() => setShowCertificateModal(false)}
+            >
+              <div
+                className="relative max-w-2xl max-h-[80vh] rounded-2xl border border-white/10 bg-[#111214] overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => setShowCertificateModal(false)}
+                  className="absolute top-4 right-4 z-10 h-8 w-8 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center text-zinc-300 hover:text-zinc-100 transition-colors"
+                >
+                  ✕
+                </button>
+                <img
+                  src="/images/certificate.png"
+                  alt="Certificate"
+                  className="w-full h-auto"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Current Section - Full Width */}
       <div className="mt-4 rounded-2xl border border-white/10 bg-[#111214] px-6 py-8">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          <h3 className="text-lg font-semibold text-zinc-100 text-center sm:text-left">
-            Current section - Operating systems module 2
-          </h3>
-          <button className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap">
-            Continue learning
-          </button>
+          {loadingCurrentModule ? (
+            <h3 className="text-lg font-semibold text-zinc-100 text-center sm:text-left">
+              Loading...
+            </h3>
+          ) : currentModule ? (
+            <>
+              <h3 className="text-lg font-semibold text-zinc-100 text-center sm:text-left">
+                {currentModule.name}
+              </h3>
+              <button
+                onClick={() => router.push(currentModule.path)}
+                className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
+              >
+                Continue learning
+              </button>
+            </>
+          ) : (
+            <>
+              <h3 className="text-lg font-semibold text-zinc-400 text-center sm:text-left">
+                No active module. Start learning!
+              </h3>
+              <button
+                onClick={() => router.push("/collections")}
+                className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
+              >
+                Start learning
+              </button>
+            </>
+          )}
         </div>
       </div>
 
