@@ -37,6 +37,7 @@ type ModuleResources = {
   doc?: string;
   youtube?: string;
   docContent?: string | null;
+  note?: string | null;
 };
 
 type SectionItem = {
@@ -325,14 +326,22 @@ export default function Collections({
     title: string;
     content: string;
   } | null>(null);
+  const [notePopup, setNotePopup] = useState<{
+    moduleId: string;
+    title: string;
+    note: string;
+  } | null>(null);
+  const [isSavingNote, setIsSavingNote] = useState(false);
+  const [noteSaveError, setNoteSaveError] = useState<string>("");
 
   useEffect(() => {
-    if (!youtubePopup && !docPopup) return;
+    if (!youtubePopup && !docPopup && !notePopup) return;
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setYoutubePopup(null);
         setDocPopup(null);
+        setNotePopup(null);
       }
     }
 
@@ -342,7 +351,7 @@ export default function Collections({
       document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [youtubePopup, docPopup]);
+  }, [youtubePopup, docPopup, notePopup]);
 
   useEffect(() => {
     let active = true;
@@ -470,7 +479,7 @@ export default function Collections({
           try {
             const { data: resourcesData, error: resourcesErr } = await supabase
               .from("collection_resources")
-              .select("module_id, type, url, content")
+              .select("module_id, type, url, content, note")
               .in("module_id", moduleIds);
             if (resourcesErr) throw resourcesErr;
 
@@ -481,6 +490,7 @@ export default function Collections({
                 type: string;
                 url: string;
                 content?: string | null;
+                note?: string | null;
               }) => {
                 if (!resourceLookup[r.module_id])
                   resourceLookup[r.module_id] = {};
@@ -495,6 +505,10 @@ export default function Collections({
                 if (typeof r.url === "string" && r.url.trim()) {
                   resourceLookup[r.module_id].youtube = r.url;
                   resourceLookup[r.module_id].doc = r.url;
+                }
+
+                if (typeof r.note === "string") {
+                  resourceLookup[r.module_id].note = r.note;
                 }
               },
             );
@@ -797,22 +811,60 @@ export default function Collections({
     window.open(target, "_blank", "noopener,noreferrer");
   }
 
-  async function addNote(moduleId: string, moduleName: string) {
-    const note = window.prompt(`Add a note for ${moduleName}`)?.trim();
-    if (!note) return;
-    if (!userId) {
-      console.error("Login required to add notes");
-      return;
-    }
+  function addNote(moduleId: string, moduleName: string) {
+    setNoteSaveError("");
+    setNotePopup({
+      moduleId,
+      title: `Notes - ${moduleName}`,
+      note: resourcesMap[moduleId]?.note || "",
+    });
+  }
+
+  async function saveNoteToResource() {
+    if (!notePopup) return;
+    const trimmedNote = notePopup.note.trim();
+    setIsSavingNote(true);
+    setNoteSaveError("");
+
     try {
-      const { error } = await supabase.from("user_module_notes").insert({
-        user_id: userId,
-        module_id: moduleId,
-        note,
-      });
-      if (error) throw error;
+      const { data: updatedRows, error: updateErr } = await supabase
+        .from("collection_resources")
+        .update({ note: trimmedNote })
+        .eq("module_id", notePopup.moduleId)
+        .select("id");
+      if (updateErr) throw updateErr;
+
+      if (!updatedRows || updatedRows.length === 0) {
+        const { error: insertErr } = await supabase
+          .from("collection_resources")
+          .insert({
+            module_id: notePopup.moduleId,
+            type: "doc",
+            note: trimmedNote,
+            url: "",
+            content: null,
+          });
+        if (insertErr) throw insertErr;
+      }
+
+      setResourcesMap((prev) => ({
+        ...prev,
+        [notePopup.moduleId]: {
+          ...(prev[notePopup.moduleId] || {}),
+          note: trimmedNote,
+        },
+      }));
+
+      setNotePopup(null);
     } catch (err) {
-      console.error("Failed to save note:", err);
+      console.error("Failed to save note in collection_resources:", err);
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Could not save note. Check table permissions/policies.";
+      setNoteSaveError(message);
+    } finally {
+      setIsSavingNote(false);
     }
   }
 
@@ -1683,6 +1735,74 @@ export default function Collections({
               <p className="text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed">
                 {docPopup.content}
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {notePopup && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => {
+            setNotePopup(null);
+            setNoteSaveError("");
+          }}
+        >
+          <div
+            className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-[#0f1115] shadow-2xl shadow-black/70 max-h-96 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <h3 className="truncate pr-3 text-sm font-semibold text-zinc-100">
+                {notePopup.title}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setNotePopup(null);
+                  setNoteSaveError("");
+                }}
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="flex-1 px-4 py-4">
+              <textarea
+                value={notePopup.note}
+                onChange={(e) =>
+                  setNotePopup((prev) =>
+                    prev ? { ...prev, note: e.target.value } : prev,
+                  )
+                }
+                placeholder="Write your notes here..."
+                className="h-44 w-full resize-none rounded-xl border border-white/15 bg-[#111214] px-3 py-2 text-sm text-zinc-200 outline-none placeholder:text-zinc-500"
+              />
+              {noteSaveError && (
+                <p className="mt-2 text-xs text-rose-300">{noteSaveError}</p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-white/10 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setNotePopup(null);
+                  setNoteSaveError("");
+                }}
+                className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveNoteToResource}
+                disabled={isSavingNote}
+                className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-60"
+              >
+                {isSavingNote ? "Saving..." : "Save Note"}
+              </button>
             </div>
           </div>
         </div>
