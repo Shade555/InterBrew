@@ -4,7 +4,7 @@ import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchChallengeSetByCompany } from "@/lib/challengeSets";
-import StarBorder from "../../../components/StarBorder";
+import StarBorder from "../../components/StarBorder";
 
 const C = {
   Meta: { a: "#0668E1", b: "#044DB3", logo: "◉" },
@@ -362,7 +362,7 @@ function ExamContent() {
             </div>
 
             <p className={`text-lg font-semibold mb-8 ${isGood ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {isGood ? '🌟 Excellent performance!' : '💪 Keep practicing to improve!'}
+              {isGood ? ' Excellent performance!' : ' Keep practicing to improve!'}
             </p>
 
             <div className="flex flex-wrap gap-4 justify-center">
