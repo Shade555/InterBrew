@@ -37,6 +37,12 @@ export default function MockInterviewPanel({
   const [solveIndex, setSolveIndex] = useState(0);
   const [solveAnswer, setSolveAnswer] = useState("");
   const [solveChecks, setSolveChecks] = useState({});
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split('T')[0]);
+  const [scheduleSubject, setScheduleSubject] = useState(topic || "");
+  const [scheduleDifficulty, setScheduleDifficulty] = useState(difficulty || "intermediate");
+  const [scheduleRound, setScheduleRound] = useState("");
+  const [scheduleNotes, setScheduleNotes] = useState("");
 
   useEffect(() => {
     if (mode !== "solve" || !moduleId) return;
@@ -398,6 +404,47 @@ export default function MockInterviewPanel({
       return;
     }
     setSolveIndex(nextIndex);
+  }
+
+  async function saveScheduledInterview() {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId || !scheduleDate || !scheduleSubject) {
+        alert("Please fill in date and subject");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("user_interviews")
+        .insert({
+          user_id: userId,
+          interview_date: scheduleDate,
+          subject: scheduleSubject,
+          difficulty: scheduleDifficulty,
+          round: scheduleRound,
+          notes: scheduleNotes,
+          user_email: userData?.user?.email,
+        });
+
+      if (error) {
+        console.error("Failed to save interview:", error);
+        alert("Failed to save interview");
+        return;
+      }
+
+      // Reset form
+      setScheduleDate(new Date().toISOString().split('T')[0]);
+      setScheduleSubject(topic || "");
+      setScheduleDifficulty(difficulty || "intermediate");
+      setScheduleRound("");
+      setScheduleNotes("");
+      setShowScheduleModal(false);
+      alert("Interview scheduled successfully!");
+    } catch (err) {
+      console.error("Error saving interview:", err);
+      alert("Error scheduling interview");
+    }
   }
 
   async function addToFavourites(question) {
@@ -1032,17 +1079,26 @@ Output Format:
           <h2 className="text-2xl font-bold">
             AI Mock Interview{difficulty ? ` — ${difficulty}` : ""}
           </h2>
-          <button
-            onClick={() => {
-              try {
-                stopSpeaking?.();
-              } catch (e) {}
-              onClose?.();
-            }}
-            className="px-3 py-1 rounded-md bg-white/10"
-          >
-            Close
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowScheduleModal(true)}
+              className="px-3 py-1 rounded-md bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 hover:bg-emerald-600/40 text-sm"
+              title="Schedule this interview"
+            >
+              📅 Schedule
+            </button>
+            <button
+              onClick={() => {
+                try {
+                  stopSpeaking?.();
+                } catch (e) {}
+                onClose?.();
+              }}
+              className="px-3 py-1 rounded-md bg-white/10"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-4 mb-6">
@@ -1121,6 +1177,116 @@ Output Format:
               ))
           )}
         </div>
+
+        {showScheduleModal && (
+          <div
+            className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            onClick={() => setShowScheduleModal(false)}
+          >
+            <div
+              className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0f1115] shadow-2xl shadow-black/70 mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                <h3 className="text-sm font-semibold text-zinc-100">Schedule Interview</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleModal(false)}
+                  className="rounded-md border border-white/15 bg-white/5 px-3 py-1 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="px-4 py-4 space-y-3">
+                {/* Date Picker */}
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1">
+                    Interview Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                    className="w-full rounded px-2 py-2 bg-black/30 border border-white/10 text-sm text-white"
+                  />
+                </div>
+
+                {/* Subject */}
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1">
+                    Subject *
+                  </label>
+                  <input
+                    value={scheduleSubject}
+                    onChange={(e) => setScheduleSubject(e.target.value)}
+                    placeholder="e.g., Process Management"
+                    className="w-full rounded px-2 py-2 bg-black/30 border border-white/10 text-sm text-white placeholder:text-zinc-600"
+                  />
+                </div>
+
+                {/* Difficulty & Round */}
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1">
+                      Difficulty
+                    </label>
+                    <select
+                      value={scheduleDifficulty}
+                      onChange={(e) => setScheduleDifficulty(e.target.value)}
+                      className="w-full rounded px-2 py-2 bg-black/30 border border-white/10 text-sm text-white"
+                    >
+                      <option value="beginner">Beginner</option>
+                      <option value="intermediate">Intermediate</option>
+                      <option value="advanced">Advanced</option>
+                    </select>
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-semibold text-zinc-400 mb-1">
+                      Round
+                    </label>
+                    <input
+                      value={scheduleRound}
+                      onChange={(e) => setScheduleRound(e.target.value)}
+                      placeholder="e.g., Technical"
+                      className="w-full rounded px-2 py-2 bg-black/30 border border-white/10 text-sm text-white placeholder:text-zinc-600"
+                    />
+                  </div>
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1">
+                    Notes (optional)
+                  </label>
+                  <textarea
+                    value={scheduleNotes}
+                    onChange={(e) => setScheduleNotes(e.target.value)}
+                    placeholder="Add any notes..."
+                    className="w-full rounded px-2 py-2 bg-black/30 border border-white/10 text-sm text-white placeholder:text-zinc-600 resize-none h-20"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-white/10 px-4 py-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleModal(false)}
+                  className="rounded-md border border-white/15 bg-white/5 px-3 py-1.5 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveScheduledInterview}
+                  className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                >
+                  Schedule
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
