@@ -1,0 +1,287 @@
+[
+  {
+    "candidateId": "anon",
+    "examId": "phase1_2026_03",
+    "scores": {
+      "coding": 0,
+      "aptitude": 0,
+      "systemDesign": 0,
+      "grandTotal": 0,
+      "maxPossible": 300
+    },
+    "percentile": 0,
+    "rank": "Below Average",
+    "breakdown": {
+      "codingDetails": [
+        {
+          "id": "prob_001",
+          "title": "Two Sum",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_002",
+          "title": "Valid Parentheses",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_003",
+          "title": "Merge Intervals",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_004",
+          "title": "LRU Cache",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_005",
+          "title": "Word Search",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_006",
+          "title": "Median of Two Sorted Arrays",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_007",
+          "title": "Longest Substring Without Repeating Characters",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_008",
+          "title": "Find Peak Element",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_009",
+          "title": "Word Ladder",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "prob_010",
+          "title": "Minimum Window Substring",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_1",
+          "title": "Placeholder Coding 1",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_2",
+          "title": "Placeholder Coding 2",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_3",
+          "title": "Placeholder Coding 3",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_4",
+          "title": "Placeholder Coding 4",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_5",
+          "title": "Placeholder Coding 5",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_6",
+          "title": "Placeholder Coding 6",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_7",
+          "title": "Placeholder Coding 7",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_8",
+          "title": "Placeholder Coding 8",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_9",
+          "title": "Placeholder Coding 9",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        },
+        {
+          "id": "coding_placeholder_10",
+          "title": "Placeholder Coding 10",
+          "score": 0,
+          "breakdown": {},
+          "testsPassed": 0,
+          "testsTotal": 0
+        }
+      ],
+      "aptitudeDetails": {
+        "quantitative": 0,
+        "qualitative": 0,
+        "logical": 0
+      },
+      "systemDesignDetails": [
+        {
+          "id": "sd_001",
+          "title": "Design a URL Shortener",
+          "score": 0
+        },
+        {
+          "id": "sd_002",
+          "title": "Design Twitter Feed",
+          "score": 0
+        },
+        {
+          "id": "sd_003",
+          "title": "Design Uber",
+          "score": 0
+        },
+        {
+          "id": "sd_004",
+          "title": "Design WhatsApp Messaging",
+          "score": 0
+        },
+        {
+          "id": "sd_005",
+          "title": "Design Netflix Video Streaming",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_1",
+          "title": "Placeholder System Design 1",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_2",
+          "title": "Placeholder System Design 2",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_3",
+          "title": "Placeholder System Design 3",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_4",
+          "title": "Placeholder System Design 4",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_5",
+          "title": "Placeholder System Design 5",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_6",
+          "title": "Placeholder System Design 6",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_7",
+          "title": "Placeholder System Design 7",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_8",
+          "title": "Placeholder System Design 8",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_9",
+          "title": "Placeholder System Design 9",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_10",
+          "title": "Placeholder System Design 10",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_11",
+          "title": "Placeholder System Design 11",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_12",
+          "title": "Placeholder System Design 12",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_13",
+          "title": "Placeholder System Design 13",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_14",
+          "title": "Placeholder System Design 14",
+          "score": 0
+        },
+        {
+          "id": "sd_placeholder_15",
+          "title": "Placeholder System Design 15",
+          "score": 0
+        }
+      ]
+    },
+    "submittedAt": "2026-03-02T07:30:17.204Z"
+  }
+]
