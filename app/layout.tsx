@@ -4,6 +4,10 @@ import "./globals.css";
 import GlobalShell from "./components/navigation/GlobalShell";
 import Head from "next/head";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { initializeServices } from "@/lib/init";
+
+// Initialize background services (email reminders, etc.)
+initializeServices();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

@@ -744,7 +744,10 @@ export default function Collections({
         .select("section_key, section_id")
         .eq("id", moduleId)
         .maybeSingle();
-      if (moduleErr) throw moduleErr;
+      if (moduleErr) {
+        console.error("Step 1 - Get module section_key failed:", moduleErr?.message || moduleErr);
+        throw moduleErr;
+      }
 
       const sectionKey = moduleRow?.section_key;
       const sectionId = moduleRow?.section_id;
@@ -753,6 +756,19 @@ export default function Collections({
       let modulesQuery = supabase.from("collection_modules").select("id");
       if (sectionId) modulesQuery = modulesQuery.eq("section_id", sectionId);
       else modulesQuery = modulesQuery.eq("section_key", sectionKey);
+      if (!sectionKey) {
+        console.log("Step 2 - No section_key found for module:", moduleId);
+        return;
+      }
+
+      const { count: totalCount, error: totalErr } = await supabase
+        .from("collection_modules")
+        .select("id", { count: "exact", head: true })
+        .eq("section_key", sectionKey);
+      if (totalErr) {
+        console.error("Step 3 - Count total modules failed:", totalErr?.message || totalErr);
+        throw totalErr;
+      }
 
       const { data: sectionModules, error: sectionModulesErr } =
         await modulesQuery;
@@ -773,20 +789,35 @@ export default function Collections({
 
       const completedCount = (completedRows ?? []).length;
       if (completedCount !== sectionModuleIds.length) return;
+        .eq("collection_modules.section_key", sectionKey);
+      if (completedErr) {
+        console.error("Step 4 - Count completed modules failed:", completedErr?.message || completedErr);
+        throw completedErr;
+      }
 
-      const { data: badgeRow, error: badgeLookupErr } = await supabase
-        .from("collection_badges")
-        .select("id")
-        .eq("section_key", sectionKey || "")
-        .maybeSingle();
-      if (badgeLookupErr) {
-        console.warn("Badge lookup failed:", badgeLookupErr);
+      console.log(`Section: ${sectionKey}, Total: ${totalCount}, Completed: ${completedCount}`);
+      if (!totalCount || completedCount !== totalCount) {
+        console.log("Not all modules completed yet");
         return;
       }
 
-      const badgeId = badgeRow?.id;
-      if (!badgeId) return;
+      const { data: badgeRows, error: badgeLookupErr } = await supabase
+        .from("collection_badges")
+        .select("id")
+        .eq("section_key", sectionKey)
+        .limit(1);
+      if (badgeLookupErr) {
+        console.error("Step 5 - Lookup badge failed:", badgeLookupErr?.message || badgeLookupErr);
+        throw badgeLookupErr;
+      }
 
+      const badgeId = badgeRows?.[0]?.id;
+      if (!badgeId) {
+        console.log("No badge found for section:", sectionKey);
+        return;
+      }
+
+      console.log("Unlocking badge:", badgeId, "for section:", sectionKey);
       const { error: badgeErr } = await supabase.from("user_badges").upsert(
         {
           user_id: userId,
@@ -795,10 +826,14 @@ export default function Collections({
         },
         { onConflict: "user_id,badge_id", ignoreDuplicates: true },
       );
-      if (badgeErr) throw badgeErr;
+      if (badgeErr) {
+        console.error("Step 6 - Upsert user_badges failed:", badgeErr?.message || badgeErr);
+        throw badgeErr;
+      }
+      
+      console.log("Badge unlocked successfully!");
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.warn("Failed to unlock section badge:", message);
+      console.error("Failed to unlock section badge:", err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -836,6 +871,30 @@ export default function Collections({
     if (problemDifficulty === "Easy") setMockDifficulty("Beginner");
     else if (problemDifficulty === "Difficult") setMockDifficulty("Advanced");
     else setMockDifficulty("Intermediate");
+
+    // Update current module in dashboard via API
+    if (userId) {
+      const updateCurrentModule = async () => {
+        try {
+          const response = await fetch("/api/update-current-module", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId,
+              moduleName: problem,
+              modulePath: "/collections",
+            }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+          }
+        } catch (err) {
+          // Error silently handled
+        }
+      };
+      updateCurrentModule();
+    }
   }
 
   function startSectionMockInterview(sectionTopic: string) {
@@ -852,6 +911,7 @@ export default function Collections({
     setTopic(sectionTopic);
     setMockDifficulty("Intermediate");
   }
+
 
   function pickRandomProblem() {
     if (items.length === 0) return;
