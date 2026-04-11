@@ -134,6 +134,36 @@ function humanizeSectionTitle(sectionKey?: string | null) {
     .join(" ");
 }
 
+function getSectionInterviewSummary(sectionTitle?: string | null) {
+  const key = normalizeSectionKey(sectionTitle);
+
+  const summaryMap: Record<string, string> = {
+    foundation:
+      "This interview checks OS basics like system calls, process lifecycle, and core architecture concepts.",
+    "process-management":
+      "This interview focuses on process states, context switching, process control blocks, and scheduling goals.",
+    "process-synchronization-deadlocks":
+      "This interview covers race conditions, critical sections, semaphores, mutexes, and deadlock handling.",
+    "threads-cpu-management":
+      "This interview evaluates threads, CPU scheduling strategies, and performance trade-offs in execution.",
+    "memory-management-virtual-memory":
+      "This interview targets memory allocation, paging, segmentation, virtual memory, and page replacement.",
+    "file-systems":
+      "This interview explores file organization, directories, inodes, permissions, and storage consistency.",
+    "io-systems":
+      "This interview covers device management, buffering, caching, interrupts, and I/O performance concepts.",
+    "command-line":
+      "This interview checks shell usage, process commands, file operations, and practical command-line problem solving.",
+    "protection-security":
+      "This interview focuses on protection models, authentication, authorization, access control, and system security basics.",
+  };
+
+  return (
+    summaryMap[key] ||
+    "This interview will evaluate your understanding of this section through concise conceptual and practical questions."
+  );
+}
+
 function FilterDropdown<T extends string>({
   value,
   onChange,
@@ -334,17 +364,24 @@ export default function Collections({
     title: string;
     note: string;
   } | null>(null);
+  const [interviewIntroPopup, setInterviewIntroPopup] = useState<{
+    sectionTopic: string;
+    summary: string;
+  } | null>(null);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteSaveError, setNoteSaveError] = useState<string>("");
+  const hasAnyPopupOpen =
+    !!youtubePopup || !!docPopup || !!notePopup || !!interviewIntroPopup;
 
   useEffect(() => {
-    if (!youtubePopup && !docPopup && !notePopup) return;
+    if (!hasAnyPopupOpen) return;
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setYoutubePopup(null);
         setDocPopup(null);
         setNotePopup(null);
+        setInterviewIntroPopup(null);
       }
     }
 
@@ -354,7 +391,7 @@ export default function Collections({
       document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [youtubePopup, docPopup, notePopup]);
+  }, [hasAnyPopupOpen]);
 
   useEffect(() => {
     let active = true;
@@ -802,6 +839,14 @@ export default function Collections({
   }
 
   function startSectionMockInterview(sectionTopic: string) {
+    setInterviewIntroPopup({
+      sectionTopic,
+      summary: getSectionInterviewSummary(sectionTopic),
+    });
+  }
+
+  function launchSectionMockInterview(sectionTopic: string) {
+    setInterviewIntroPopup(null);
     setPanelMode("interview");
     setActiveModuleId(null);
     setTopic(sectionTopic);
@@ -809,9 +854,32 @@ export default function Collections({
   }
 
   function pickRandomProblem() {
-    const pickFrom = items;
-    if (pickFrom.length === 0) return;
-    const selected = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+    if (items.length === 0) return;
+
+    const modulesBySection = new Map<string, ModuleItem[]>();
+    items.forEach((item) => {
+      const key = normalizeSectionKey(item.sectionKey) || "unassigned";
+      if (!modulesBySection.has(key)) modulesBySection.set(key, []);
+      modulesBySection.get(key)?.push(item);
+    });
+
+    const sectionKeys = Array.from(modulesBySection.keys());
+    if (sectionKeys.length === 0) return;
+
+    const pickedSectionKey =
+      sectionKeys[Math.floor(Math.random() * sectionKeys.length)];
+    const sectionModules = modulesBySection.get(pickedSectionKey) || [];
+    if (sectionModules.length === 0) return;
+
+    const selected =
+      sectionModules[Math.floor(Math.random() * sectionModules.length)];
+
+    // Ensure random-picked module is visible regardless of current filters.
+    setActiveTab("all");
+    setSearchQuery("");
+    setSolvedFilter("all");
+    setDifficultyFilter("all");
+
     setRandomPicked(selected.name);
     setRandomOnlyModuleId(selected.id);
   }
@@ -987,6 +1055,15 @@ export default function Collections({
       (a, b) => a.orderNumber - b.orderNumber,
     );
   })();
+
+  const visibleSectionList = sectionList.filter((section) =>
+    filteredItems.some(
+      (it) =>
+        (section.id && it.sectionId && it.sectionId === section.id) ||
+        normalizeSectionKey(it.sectionKey) ===
+          normalizeSectionKey(section.sectionKey),
+    ),
+  );
 
   const normalizedSectionCompletion: Record<string, boolean> = {};
   sectionList.forEach((section) => {
@@ -1298,7 +1375,7 @@ export default function Collections({
           </div>
 
           <div className="space-y-4">
-            {sectionList.map((section) => {
+            {visibleSectionList.map((section) => {
               const sectionItems = filteredItems.filter(
                 (it) =>
                   (section.id && it.sectionId && it.sectionId === section.id) ||
@@ -1559,7 +1636,7 @@ export default function Collections({
               );
             })}
 
-            {sectionList.length === 0 && (
+            {visibleSectionList.length === 0 && (
               <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-8 text-center text-sm text-zinc-500">
                 No sections found in collection_sections.
               </div>
@@ -1828,6 +1905,50 @@ export default function Collections({
             setActiveModuleId(null);
           }}
         />
+      )}
+
+      {interviewIntroPopup && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => setInterviewIntroPopup(null)}
+        >
+          <div
+            className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-[#0f1115] p-6 shadow-2xl shadow-black/70"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold text-zinc-100">
+              Mock Interview Preview
+            </h3>
+            <p className="mt-3 text-sm text-zinc-300">
+              This interview is for {interviewIntroPopup.sectionTopic}.
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              {interviewIntroPopup.summary}
+            </p>
+
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  launchSectionMockInterview(interviewIntroPopup.sectionTopic)
+                }
+                className="inline-flex h-10 items-center justify-center rounded-md border border-blue-500/40 bg-blue-500/10 px-4 text-sm text-blue-300 hover:bg-blue-500/20 transition-colors"
+              >
+                Take an interview
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setInterviewIntroPopup(null);
+                  window.open("/help", "_blank", "noopener,noreferrer");
+                }}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                Schedule an interview
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {youtubePopup && (
