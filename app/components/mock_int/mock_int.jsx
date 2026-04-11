@@ -164,6 +164,55 @@ export default function MockInterviewPanel({
       .replace(/\s+/g, " ");
   }
 
+  function parseTextAnswerCandidates(value) {
+    if (Array.isArray(value)) {
+      return value.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+
+    if (value && typeof value === "object") {
+      return Object.values(value)
+        .map((item) => String(item || "").trim())
+        .filter(Boolean);
+    }
+
+    if (typeof value === "string") {
+      const raw = value.trim();
+      if (!raw) return [];
+
+      try {
+        const parsed = JSON.parse(raw);
+        return parseTextAnswerCandidates(parsed);
+      } catch (e) {
+        const split = raw
+          .split(/\n|\||;|,/)
+          .map((item) => item.trim())
+          .filter(Boolean);
+        return split.length > 1 ? split : [raw];
+      }
+    }
+
+    const single = String(value || "").trim();
+    return single ? [single] : [];
+  }
+
+  function getShortAnswerCandidates(question) {
+    const candidates = [
+      ...parseTextAnswerCandidates(question?.short_answer),
+      ...parseTextAnswerCandidates(question?.correct_answer),
+      ...parseTextAnswerCandidates(question?.answer),
+      ...parseTextAnswerCandidates(question?.expected_answer),
+    ];
+
+    // Unique by normalized value.
+    const seen = new Set();
+    return candidates.filter((item) => {
+      const key = normalizeText(item);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
   function parseChoiceIndexes(value) {
     if (Array.isArray(value)) return value.map((item) => Number(item));
     if (typeof value === "string") {
@@ -308,7 +357,15 @@ export default function MockInterviewPanel({
     }
 
     if (type === "short_answer") {
-      return normalizeText(answer) === normalizeText(question.short_answer);
+      const userAnswer = normalizeText(answer);
+      if (!userAnswer) return false;
+
+      const acceptedAnswers = getShortAnswerCandidates(question);
+      if (acceptedAnswers.length === 0) return false;
+
+      return acceptedAnswers.some(
+        (candidate) => normalizeText(candidate) === userAnswer,
+      );
     }
 
     if (type === "numerical") {

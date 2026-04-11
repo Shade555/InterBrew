@@ -253,7 +253,6 @@ export default function Collections({
   ];
 
   const fallbackCheatSheets: CheatSheetItem[] = [
-    { title: "Command Line", sectionKey: "command-line", href: "#" },
     {
       title: "Process Management",
       sectionKey: "process-management",
@@ -280,13 +279,13 @@ export default function Collections({
       href: "#",
     },
     {
-      title: "Intermediate Linux",
-      sectionKey: "io-systems",
+      title: "Intermediate OS",
+      sectionKey: "protection-security",
       href: "#",
     },
     {
-      title: "Shell Scripting",
-      sectionKey: "protection-security",
+      title: "Command Line",
+      sectionKey: "command-line",
       href: "#",
     },
   ];
@@ -556,21 +555,53 @@ export default function Collections({
             .order("order_number", { ascending: true });
           if (cheatErr) throw cheatErr;
           if (active && (cheatData ?? []).length > 0) {
-            setCheatSheets(
-              (cheatData ?? []).map(
+            const mappedSheets = (cheatData ?? [])
+              .map(
                 (c: {
                   id: string;
                   title: string;
                   section_key: string;
                   resource_url: string;
-                }) => ({
-                  id: c.id,
-                  title: c.title,
-                  sectionKey: c.section_key,
-                  href: c.resource_url,
-                }),
-              ),
+                }) => {
+                  const normalizedTitle = normalizeSectionKey(c.title);
+                  const isIntermediateLinux =
+                    normalizedTitle === "intermediate-linux";
+
+                  return {
+                    id: c.id,
+                    title: isIntermediateLinux ? "Intermediate OS" : c.title,
+                    sectionKey: isIntermediateLinux
+                      ? "protection-security"
+                      : c.section_key,
+                    href: c.resource_url,
+                  };
+                },
+              )
+              .filter(
+                (sheet) =>
+                  normalizeSectionKey(sheet.title) !== "shell-scripting",
+              );
+
+            const commandLineSheets = mappedSheets.filter(
+              (sheet) => normalizeSectionKey(sheet.title) === "command-line",
             );
+            const nonCommandLineSheets = mappedSheets.filter(
+              (sheet) => normalizeSectionKey(sheet.title) !== "command-line",
+            );
+
+            const finalSheets =
+              commandLineSheets.length > 0
+                ? [...nonCommandLineSheets, ...commandLineSheets]
+                : [
+                    ...nonCommandLineSheets,
+                    {
+                      title: "Command Line",
+                      sectionKey: "command-line",
+                      href: "#",
+                    },
+                  ];
+
+            setCheatSheets(finalSheets);
           }
         } catch (err) {
           console.warn("Failed to load cheatsheets:", err);
@@ -995,14 +1026,77 @@ export default function Collections({
     return normalizedFromSource;
   }
 
+  function resolveUnlockSectionKeys(
+    sectionKey?: string,
+    labelOrTitle?: string,
+  ) {
+    const normalizedLabel = normalizeSectionKey(labelOrTitle);
+
+    if (normalizedLabel === "threads-and-cpu-management") {
+      return [
+        "threads-and-cpu-scheduling",
+        "thread-management",
+        "cpu-scheduling",
+      ];
+    }
+
+    return [resolveUnlockSectionKey(sectionKey, labelOrTitle)].filter(Boolean);
+  }
+
   function isSectionUnlocked(sectionKey?: string, labelOrTitle?: string) {
-    const normalized = resolveUnlockSectionKey(sectionKey, labelOrTitle);
-    if (!normalized) return false;
-    return !!normalizedSectionCompletion[normalized];
+    const normalizedLabel = normalizeSectionKey(labelOrTitle);
+    if (normalizedLabel === "interview-ready") {
+      const completionValues = Object.values(normalizedSectionCompletion);
+      return completionValues.length > 0 && completionValues.every(Boolean);
+    }
+
+    const normalizedKeys = resolveUnlockSectionKeys(sectionKey, labelOrTitle);
+    if (normalizedKeys.length === 0) return false;
+    return normalizedKeys.some((key) => !!normalizedSectionCompletion[key]);
+  }
+
+  function isCheatSheetUnlocked(sheet: CheatSheetItem) {
+    const titleKey = normalizeSectionKey(sheet.title);
+
+    if (titleKey === "memory-management") {
+      const combined =
+        normalizedSectionCompletion["memory-management-virtual-memory"];
+      if (combined !== undefined) return !!combined;
+
+      const hasMemoryKey =
+        normalizedSectionCompletion["memory-management"] !== undefined;
+      const hasVirtualKey =
+        normalizedSectionCompletion["virtual-memory"] !== undefined;
+      if (hasMemoryKey || hasVirtualKey) {
+        return (
+          !!normalizedSectionCompletion["memory-management"] &&
+          !!normalizedSectionCompletion["virtual-memory"]
+        );
+      }
+    }
+
+    if (titleKey === "file-system-and-i-o-management") {
+      const combined =
+        normalizedSectionCompletion["file-system-and-i-o-management"];
+      if (combined !== undefined) return !!combined;
+
+      const hasFileSystems =
+        normalizedSectionCompletion["file-systems"] !== undefined;
+      const hasIoSystems =
+        normalizedSectionCompletion["io-systems"] !== undefined;
+      if (hasFileSystems || hasIoSystems) {
+        return (
+          !!normalizedSectionCompletion["file-systems"] &&
+          !!normalizedSectionCompletion["io-systems"]
+        );
+      }
+    }
+
+    return isSectionUnlocked(sheet.sectionKey, sheet.title);
   }
 
   const unlockedCheatSheets = cheatSheets.filter((sheet) =>
-    isSectionUnlocked(sheet.sectionKey, sheet.title),
+    isCheatSheetUnlocked(sheet),
   ).length;
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -1671,10 +1765,7 @@ export default function Collections({
 
             <div className="mt-4 space-y-3">
               {cheatSheets.map((sheet) => {
-                const unlocked = isSectionUnlocked(
-                  sheet.sectionKey,
-                  sheet.title,
-                );
+                const unlocked = isCheatSheetUnlocked(sheet);
 
                 if (!unlocked) {
                   return (
