@@ -284,7 +284,7 @@ export default function Leaderboard() {
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl"></div>
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-green-500/10 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-3xl"></div>
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-150 h-150 bg-emerald-500/5 rounded-full blur-3xl"></div>
       </div>
 
       <div className="relative z-10 min-h-screen p-4 md:p-6 max-w-6xl mx-auto">
@@ -383,7 +383,7 @@ export default function Leaderboard() {
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
             {/* Top 3 Podium */}
             {filteredLeaderboard.length >= 3 && (
-              <div className="flex justify-center items-end gap-4 p-8 bg-gradient-to-b from-emerald-500/5 to-transparent">
+              <div className="flex justify-center items-end gap-4 p-8 bg-linear-to-b from-emerald-500/5 to-transparent">
                 {/* 2nd Place */}
                 <div className="text-center">
                   <div className="w-20 h-20 mx-auto mb-3 rounded-full border-4 border-gray-400/30 bg-black/40 flex items-center justify-center text-3xl font-black text-gray-400">

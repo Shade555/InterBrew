@@ -183,6 +183,7 @@ function Calendar() {
     try {
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData?.user?.id;
+      const userEmail = userData?.user?.email;
       if (!userId) throw new Error("Not signed in");
       const iso = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const payload = {
@@ -192,6 +193,7 @@ function Calendar() {
         difficulty: difficultyInput,
         round: roundInput,
         notes: notesInput,
+        user_email: userEmail,
       };
       const { data, error } = await supabase
         .from("user_interviews")
