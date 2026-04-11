@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import MockInterviewPanel from "../mock_int/mock_int";
+import MockInterviewPanel from "../mock_int/mock_int.jsx";
 import { supabase } from "../../../lib/supabaseClient";
 
 type DropdownOption<T extends string> = {
@@ -134,6 +134,36 @@ function humanizeSectionTitle(sectionKey?: string | null) {
     .join(" ");
 }
 
+function getSectionInterviewSummary(sectionTitle?: string | null) {
+  const key = normalizeSectionKey(sectionTitle);
+
+  const summaryMap: Record<string, string> = {
+    foundation:
+      "This interview checks OS basics like system calls, process lifecycle, and core architecture concepts.",
+    "process-management":
+      "This interview focuses on process states, context switching, process control blocks, and scheduling goals.",
+    "process-synchronization-deadlocks":
+      "This interview covers race conditions, critical sections, semaphores, mutexes, and deadlock handling.",
+    "threads-cpu-management":
+      "This interview evaluates threads, CPU scheduling strategies, and performance trade-offs in execution.",
+    "memory-management-virtual-memory":
+      "This interview targets memory allocation, paging, segmentation, virtual memory, and page replacement.",
+    "file-systems":
+      "This interview explores file organization, directories, inodes, permissions, and storage consistency.",
+    "io-systems":
+      "This interview covers device management, buffering, caching, interrupts, and I/O performance concepts.",
+    "command-line":
+      "This interview checks shell usage, process commands, file operations, and practical command-line problem solving.",
+    "protection-security":
+      "This interview focuses on protection models, authentication, authorization, access control, and system security basics.",
+  };
+
+  return (
+    summaryMap[key] ||
+    "This interview will evaluate your understanding of this section through concise conceptual and practical questions."
+  );
+}
+
 function FilterDropdown<T extends string>({
   value,
   onChange,
@@ -243,7 +273,7 @@ export default function Collections({
     {
       label: "Command Line",
       src: "/images/Command%20Line.png",
-      sectionKey: "system-structures",
+      sectionKey: "command-line",
     },
     {
       label: "Interview - Ready",
@@ -253,7 +283,6 @@ export default function Collections({
   ];
 
   const fallbackCheatSheets: CheatSheetItem[] = [
-    { title: "Command Line", sectionKey: "system-structures", href: "#" },
     {
       title: "Process Management",
       sectionKey: "process-management",
@@ -280,19 +309,23 @@ export default function Collections({
       href: "#",
     },
     {
-      title: "Intermediate Linux",
-      sectionKey: "io-systems",
+      title: "Intermediate OS",
+      sectionKey: "protection-security",
       href: "#",
     },
     {
-      title: "Shell Scripting",
-      sectionKey: "protection-security",
+      title: "Command Line",
+      sectionKey: "command-line",
       href: "#",
     },
   ];
 
   const [mockDifficulty, setMockDifficulty] = useState<string | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
+  const [panelMode, setPanelMode] = useState<"interview" | "solve">(
+    "interview",
+  );
+  const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [doneMap, setDoneMap] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<"all" | "revision">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -331,17 +364,24 @@ export default function Collections({
     title: string;
     note: string;
   } | null>(null);
+  const [interviewIntroPopup, setInterviewIntroPopup] = useState<{
+    sectionTopic: string;
+    summary: string;
+  } | null>(null);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteSaveError, setNoteSaveError] = useState<string>("");
+  const hasAnyPopupOpen =
+    !!youtubePopup || !!docPopup || !!notePopup || !!interviewIntroPopup;
 
   useEffect(() => {
-    if (!youtubePopup && !docPopup && !notePopup) return;
+    if (!hasAnyPopupOpen) return;
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setYoutubePopup(null);
         setDocPopup(null);
         setNotePopup(null);
+        setInterviewIntroPopup(null);
       }
     }
 
@@ -351,7 +391,7 @@ export default function Collections({
       document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [youtubePopup, docPopup, notePopup]);
+  }, [hasAnyPopupOpen]);
 
   useEffect(() => {
     let active = true;
@@ -552,21 +592,53 @@ export default function Collections({
             .order("order_number", { ascending: true });
           if (cheatErr) throw cheatErr;
           if (active && (cheatData ?? []).length > 0) {
-            setCheatSheets(
-              (cheatData ?? []).map(
+            const mappedSheets = (cheatData ?? [])
+              .map(
                 (c: {
                   id: string;
                   title: string;
                   section_key: string;
                   resource_url: string;
-                }) => ({
-                  id: c.id,
-                  title: c.title,
-                  sectionKey: c.section_key,
-                  href: c.resource_url,
-                }),
-              ),
+                }) => {
+                  const normalizedTitle = normalizeSectionKey(c.title);
+                  const isIntermediateLinux =
+                    normalizedTitle === "intermediate-linux";
+
+                  return {
+                    id: c.id,
+                    title: isIntermediateLinux ? "Intermediate OS" : c.title,
+                    sectionKey: isIntermediateLinux
+                      ? "protection-security"
+                      : c.section_key,
+                    href: c.resource_url,
+                  };
+                },
+              )
+              .filter(
+                (sheet) =>
+                  normalizeSectionKey(sheet.title) !== "shell-scripting",
+              );
+
+            const commandLineSheets = mappedSheets.filter(
+              (sheet) => normalizeSectionKey(sheet.title) === "command-line",
             );
+            const nonCommandLineSheets = mappedSheets.filter(
+              (sheet) => normalizeSectionKey(sheet.title) !== "command-line",
+            );
+
+            const finalSheets =
+              commandLineSheets.length > 0
+                ? [...nonCommandLineSheets, ...commandLineSheets]
+                : [
+                    ...nonCommandLineSheets,
+                    {
+                      title: "Command Line",
+                      sectionKey: "command-line",
+                      href: "#",
+                    },
+                  ];
+
+            setCheatSheets(finalSheets);
           }
         } catch (err) {
           console.warn("Failed to load cheatsheets:", err);
@@ -669,7 +741,7 @@ export default function Collections({
     try {
       const { data: moduleRow, error: moduleErr } = await supabase
         .from("collection_modules")
-        .select("section_key")
+        .select("section_key, section_id")
         .eq("id", moduleId)
         .maybeSingle();
       if (moduleErr) {
@@ -678,6 +750,12 @@ export default function Collections({
       }
 
       const sectionKey = moduleRow?.section_key;
+      const sectionId = moduleRow?.section_id;
+      if (!sectionKey && !sectionId) return;
+
+      let modulesQuery = supabase.from("collection_modules").select("id");
+      if (sectionId) modulesQuery = modulesQuery.eq("section_id", sectionId);
+      else modulesQuery = modulesQuery.eq("section_key", sectionKey);
       if (!sectionKey) {
         console.log("Step 2 - No section_key found for module:", moduleId);
         return;
@@ -692,14 +770,25 @@ export default function Collections({
         throw totalErr;
       }
 
-      const { count: completedCount, error: completedErr } = await supabase
+      const { data: sectionModules, error: sectionModulesErr } =
+        await modulesQuery;
+      if (sectionModulesErr) throw sectionModulesErr;
+
+      const sectionModuleIds = (sectionModules ?? []).map(
+        (row: { id: string }) => row.id,
+      );
+      if (sectionModuleIds.length === 0) return;
+
+      const { data: completedRows, error: completedErr } = await supabase
         .from("user_collection_module_progress")
-        .select("module_id, collection_modules!inner(section_key)", {
-          count: "exact",
-          head: true,
-        })
+        .select("module_id")
         .eq("user_id", userId)
         .eq("completed", true)
+        .in("module_id", sectionModuleIds);
+      if (completedErr) throw completedErr;
+
+      const completedCount = (completedRows ?? []).length;
+      if (completedCount !== sectionModuleIds.length) return;
         .eq("collection_modules.section_key", sectionKey);
       if (completedErr) {
         console.error("Step 4 - Count completed modules failed:", completedErr?.message || completedErr);
@@ -771,7 +860,13 @@ export default function Collections({
     await persistMeta(moduleId, nextRevision);
   }
 
-  function startSolve(problem: string, problemDifficulty?: string) {
+  function startSolve(
+    moduleId: string,
+    problem: string,
+    problemDifficulty?: string,
+  ) {
+    setPanelMode("solve");
+    setActiveModuleId(moduleId);
     setTopic(problem);
     if (problemDifficulty === "Easy") setMockDifficulty("Beginner");
     else if (problemDifficulty === "Difficult") setMockDifficulty("Advanced");
@@ -802,12 +897,49 @@ export default function Collections({
     }
   }
 
+  function startSectionMockInterview(sectionTopic: string) {
+    setInterviewIntroPopup({
+      sectionTopic,
+      summary: getSectionInterviewSummary(sectionTopic),
+    });
+  }
+
+  function launchSectionMockInterview(sectionTopic: string) {
+    setInterviewIntroPopup(null);
+    setPanelMode("interview");
+    setActiveModuleId(null);
+    setTopic(sectionTopic);
+    setMockDifficulty("Intermediate");
+  }
 
 
   function pickRandomProblem() {
-    const pickFrom = items;
-    if (pickFrom.length === 0) return;
-    const selected = pickFrom[Math.floor(Math.random() * pickFrom.length)];
+    if (items.length === 0) return;
+
+    const modulesBySection = new Map<string, ModuleItem[]>();
+    items.forEach((item) => {
+      const key = normalizeSectionKey(item.sectionKey) || "unassigned";
+      if (!modulesBySection.has(key)) modulesBySection.set(key, []);
+      modulesBySection.get(key)?.push(item);
+    });
+
+    const sectionKeys = Array.from(modulesBySection.keys());
+    if (sectionKeys.length === 0) return;
+
+    const pickedSectionKey =
+      sectionKeys[Math.floor(Math.random() * sectionKeys.length)];
+    const sectionModules = modulesBySection.get(pickedSectionKey) || [];
+    if (sectionModules.length === 0) return;
+
+    const selected =
+      sectionModules[Math.floor(Math.random() * sectionModules.length)];
+
+    // Ensure random-picked module is visible regardless of current filters.
+    setActiveTab("all");
+    setSearchQuery("");
+    setSolvedFilter("all");
+    setDifficultyFilter("all");
+
     setRandomPicked(selected.name);
     setRandomOnlyModuleId(selected.id);
   }
@@ -961,37 +1093,6 @@ export default function Collections({
   const overallPct =
     allTotal > 0 ? Math.round((allSolved / allTotal) * 100) : 0;
 
-  const sectionTotals: Record<string, number> = {};
-  const sectionSolved: Record<string, number> = {};
-  items.forEach((item) => {
-    sectionTotals[item.sectionKey] = (sectionTotals[item.sectionKey] || 0) + 1;
-    if (doneMap[item.id]) {
-      sectionSolved[item.sectionKey] =
-        (sectionSolved[item.sectionKey] || 0) + 1;
-    }
-  });
-
-  const sectionCompletion: Record<string, boolean> = {};
-  Object.keys(sectionTotals).forEach((key) => {
-    sectionCompletion[key] =
-      sectionTotals[key] > 0 && sectionSolved[key] === sectionTotals[key];
-  });
-
-  const normalizedSectionCompletion: Record<string, boolean> = {};
-  Object.entries(sectionCompletion).forEach(([key, completed]) => {
-    normalizedSectionCompletion[normalizeSectionKey(key)] = completed;
-  });
-
-  function isSectionUnlocked(sectionKey?: string) {
-    const normalized = normalizeSectionKey(sectionKey);
-    if (!normalized) return false;
-    return !!normalizedSectionCompletion[normalized];
-  }
-
-  const unlockedCheatSheets = cheatSheets.filter((sheet) =>
-    isSectionUnlocked(sheet.sectionKey),
-  ).length;
-
   const sectionList: SectionItem[] = (() => {
     const map = new Map<string, SectionItem>();
 
@@ -1014,6 +1115,126 @@ export default function Collections({
       (a, b) => a.orderNumber - b.orderNumber,
     );
   })();
+
+  const visibleSectionList = sectionList.filter((section) =>
+    filteredItems.some(
+      (it) =>
+        (section.id && it.sectionId && it.sectionId === section.id) ||
+        normalizeSectionKey(it.sectionKey) ===
+          normalizeSectionKey(section.sectionKey),
+    ),
+  );
+
+  const normalizedSectionCompletion: Record<string, boolean> = {};
+  sectionList.forEach((section) => {
+    const sectionItems = items.filter(
+      (it) =>
+        (section.id && it.sectionId && it.sectionId === section.id) ||
+        normalizeSectionKey(it.sectionKey) ===
+          normalizeSectionKey(section.sectionKey),
+    );
+
+    const solvedCount = sectionItems.filter((it) => doneMap[it.id]).length;
+    normalizedSectionCompletion[normalizeSectionKey(section.sectionKey)] =
+      sectionItems.length > 0 && solvedCount === sectionItems.length;
+  });
+
+  function resolveUnlockSectionKey(sectionKey?: string, labelOrTitle?: string) {
+    const normalizedFromSource = normalizeSectionKey(sectionKey);
+    const normalizedLabel = normalizeSectionKey(labelOrTitle);
+
+    if (normalizedLabel === "command-line") {
+      // Prefer explicit command-line section completion if present.
+      if (normalizedSectionCompletion["command-line"] !== undefined) {
+        return "command-line";
+      }
+
+      // Fallback to a section whose title resolves to command-line.
+      const matchedSection = sectionList.find(
+        (section) => normalizeSectionKey(section.title) === "command-line",
+      );
+      if (matchedSection) {
+        return normalizeSectionKey(matchedSection.sectionKey);
+      }
+
+      return "command-line";
+    }
+
+    return normalizedFromSource;
+  }
+
+  function resolveUnlockSectionKeys(
+    sectionKey?: string,
+    labelOrTitle?: string,
+  ) {
+    const normalizedLabel = normalizeSectionKey(labelOrTitle);
+
+    if (normalizedLabel === "threads-and-cpu-management") {
+      return [
+        "threads-and-cpu-scheduling",
+        "thread-management",
+        "cpu-scheduling",
+      ];
+    }
+
+    return [resolveUnlockSectionKey(sectionKey, labelOrTitle)].filter(Boolean);
+  }
+
+  function isSectionUnlocked(sectionKey?: string, labelOrTitle?: string) {
+    const normalizedLabel = normalizeSectionKey(labelOrTitle);
+    if (normalizedLabel === "interview-ready") {
+      const completionValues = Object.values(normalizedSectionCompletion);
+      return completionValues.length > 0 && completionValues.every(Boolean);
+    }
+
+    const normalizedKeys = resolveUnlockSectionKeys(sectionKey, labelOrTitle);
+    if (normalizedKeys.length === 0) return false;
+    return normalizedKeys.some((key) => !!normalizedSectionCompletion[key]);
+  }
+
+  function isCheatSheetUnlocked(sheet: CheatSheetItem) {
+    const titleKey = normalizeSectionKey(sheet.title);
+
+    if (titleKey === "memory-management") {
+      const combined =
+        normalizedSectionCompletion["memory-management-virtual-memory"];
+      if (combined !== undefined) return !!combined;
+
+      const hasMemoryKey =
+        normalizedSectionCompletion["memory-management"] !== undefined;
+      const hasVirtualKey =
+        normalizedSectionCompletion["virtual-memory"] !== undefined;
+      if (hasMemoryKey || hasVirtualKey) {
+        return (
+          !!normalizedSectionCompletion["memory-management"] &&
+          !!normalizedSectionCompletion["virtual-memory"]
+        );
+      }
+    }
+
+    if (titleKey === "file-system-and-i-o-management") {
+      const combined =
+        normalizedSectionCompletion["file-system-and-i-o-management"];
+      if (combined !== undefined) return !!combined;
+
+      const hasFileSystems =
+        normalizedSectionCompletion["file-systems"] !== undefined;
+      const hasIoSystems =
+        normalizedSectionCompletion["io-systems"] !== undefined;
+      if (hasFileSystems || hasIoSystems) {
+        return (
+          !!normalizedSectionCompletion["file-systems"] &&
+          !!normalizedSectionCompletion["io-systems"]
+        );
+      }
+    }
+
+    return isSectionUnlocked(sheet.sectionKey, sheet.title);
+  }
+
+  const unlockedCheatSheets = cheatSheets.filter((sheet) =>
+    isCheatSheetUnlocked(sheet),
+  ).length;
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
   const easyRatio = clamp01(easySolved / easyTotal);
@@ -1214,7 +1435,7 @@ export default function Collections({
           </div>
 
           <div className="space-y-4">
-            {sectionList.map((section) => {
+            {visibleSectionList.map((section) => {
               const sectionItems = filteredItems.filter(
                 (it) =>
                   (section.id && it.sectionId && it.sectionId === section.id) ||
@@ -1343,7 +1564,7 @@ export default function Collections({
                                 <td className="px-5 py-3 text-center align-middle">
                                   <button
                                     onClick={() =>
-                                      startSolve(it.name, it.difficulty)
+                                      startSolve(it.id, it.name, it.difficulty)
                                     }
                                     className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
                                   >
@@ -1454,13 +1675,28 @@ export default function Collections({
                           </tbody>
                         </table>
                       </div>
+
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            startSectionMockInterview(
+                              section.title ||
+                                humanizeSectionTitle(section.sectionKey),
+                            );
+                          }}
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-blue-500/40 bg-blue-500/10 px-4 text-sm text-blue-300 hover:bg-blue-500/20 transition-colors"
+                        >
+                          Mock Interview
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
               );
             })}
 
-            {sectionList.length === 0 && (
+            {visibleSectionList.length === 0 && (
               <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-8 text-center text-sm text-zinc-500">
                 No sections found in collection_sections.
               </div>
@@ -1636,13 +1872,13 @@ export default function Collections({
                     src={badge.src}
                     alt={badge.label}
                     className={`h-11 w-11 object-contain ${
-                      isSectionUnlocked(badge.sectionKey)
+                      isSectionUnlocked(badge.sectionKey, badge.label)
                         ? "opacity-100"
                         : "opacity-35 grayscale"
                     }`}
                   />
                   <span className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/15 bg-[#0f1115]/95 px-2 py-1 text-[10px] text-zinc-100 opacity-0 shadow-lg shadow-black/40 transition-opacity duration-150 group-hover:opacity-100">
-                    {isSectionUnlocked(badge.sectionKey)
+                    {isSectionUnlocked(badge.sectionKey, badge.label)
                       ? badge.label
                       : `${badge.label} (Locked)`}
                   </span>
@@ -1666,7 +1902,7 @@ export default function Collections({
 
             <div className="mt-4 space-y-3">
               {cheatSheets.map((sheet) => {
-                const unlocked = isSectionUnlocked(sheet.sectionKey);
+                const unlocked = isCheatSheetUnlocked(sheet);
 
                 if (!unlocked) {
                   return (
@@ -1720,11 +1956,59 @@ export default function Collections({
         <MockInterviewPanel
           difficulty={mockDifficulty}
           topic={topic || undefined}
+          mode={panelMode}
+          moduleId={activeModuleId || undefined}
           onClose={() => {
             setMockDifficulty(null);
             setTopic(null);
+            setPanelMode("interview");
+            setActiveModuleId(null);
           }}
         />
+      )}
+
+      {interviewIntroPopup && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => setInterviewIntroPopup(null)}
+        >
+          <div
+            className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/15 bg-[#0f1115] p-6 shadow-2xl shadow-black/70"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-xl font-semibold text-zinc-100">
+              Mock Interview Preview
+            </h3>
+            <p className="mt-3 text-sm text-zinc-300">
+              This interview is for {interviewIntroPopup.sectionTopic}.
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+              {interviewIntroPopup.summary}
+            </p>
+
+            <div className="mt-6 flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  launchSectionMockInterview(interviewIntroPopup.sectionTopic)
+                }
+                className="inline-flex h-10 items-center justify-center rounded-md border border-blue-500/40 bg-blue-500/10 px-4 text-sm text-blue-300 hover:bg-blue-500/20 transition-colors"
+              >
+                Take an interview
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setInterviewIntroPopup(null);
+                  window.open("/help", "_blank", "noopener,noreferrer");
+                }}
+                className="inline-flex h-10 items-center justify-center rounded-md border border-white/15 bg-white/5 px-4 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                Schedule an interview
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {youtubePopup && (
