@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import MockInterviewPanel from "../mock_int/mock_int";
+import MockInterviewPanel from "../mock_int/mock_int.jsx";
 import { supabase } from "../../../lib/supabaseClient";
 
 type DropdownOption<T extends string> = {
@@ -243,7 +243,7 @@ export default function Collections({
     {
       label: "Command Line",
       src: "/images/Command%20Line.png",
-      sectionKey: "system-structures",
+      sectionKey: "command-line",
     },
     {
       label: "Interview - Ready",
@@ -253,7 +253,7 @@ export default function Collections({
   ];
 
   const fallbackCheatSheets: CheatSheetItem[] = [
-    { title: "Command Line", sectionKey: "system-structures", href: "#" },
+    { title: "Command Line", sectionKey: "command-line", href: "#" },
     {
       title: "Process Management",
       sectionKey: "process-management",
@@ -293,6 +293,10 @@ export default function Collections({
 
   const [mockDifficulty, setMockDifficulty] = useState<string | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
+  const [panelMode, setPanelMode] = useState<"interview" | "solve">(
+    "interview",
+  );
+  const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [doneMap, setDoneMap] = useState<Record<string, boolean>>({});
   const [activeTab, setActiveTab] = useState<"all" | "revision">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -669,39 +673,48 @@ export default function Collections({
     try {
       const { data: moduleRow, error: moduleErr } = await supabase
         .from("collection_modules")
-        .select("section_key")
+        .select("section_key, section_id")
         .eq("id", moduleId)
         .maybeSingle();
       if (moduleErr) throw moduleErr;
 
       const sectionKey = moduleRow?.section_key;
-      if (!sectionKey) return;
+      const sectionId = moduleRow?.section_id;
+      if (!sectionKey && !sectionId) return;
 
-      const { count: totalCount, error: totalErr } = await supabase
-        .from("collection_modules")
-        .select("id", { count: "exact", head: true })
-        .eq("section_key", sectionKey);
-      if (totalErr) throw totalErr;
+      let modulesQuery = supabase.from("collection_modules").select("id");
+      if (sectionId) modulesQuery = modulesQuery.eq("section_id", sectionId);
+      else modulesQuery = modulesQuery.eq("section_key", sectionKey);
 
-      const { count: completedCount, error: completedErr } = await supabase
+      const { data: sectionModules, error: sectionModulesErr } =
+        await modulesQuery;
+      if (sectionModulesErr) throw sectionModulesErr;
+
+      const sectionModuleIds = (sectionModules ?? []).map(
+        (row: { id: string }) => row.id,
+      );
+      if (sectionModuleIds.length === 0) return;
+
+      const { data: completedRows, error: completedErr } = await supabase
         .from("user_collection_module_progress")
-        .select("module_id, collection_modules!inner(section_key)", {
-          count: "exact",
-          head: true,
-        })
+        .select("module_id")
         .eq("user_id", userId)
         .eq("completed", true)
-        .eq("collection_modules.section_key", sectionKey);
+        .in("module_id", sectionModuleIds);
       if (completedErr) throw completedErr;
 
-      if (!totalCount || completedCount !== totalCount) return;
+      const completedCount = (completedRows ?? []).length;
+      if (completedCount !== sectionModuleIds.length) return;
 
       const { data: badgeRow, error: badgeLookupErr } = await supabase
         .from("collection_badges")
         .select("id")
-        .eq("section_key", sectionKey)
+        .eq("section_key", sectionKey || "")
         .maybeSingle();
-      if (badgeLookupErr) throw badgeLookupErr;
+      if (badgeLookupErr) {
+        console.warn("Badge lookup failed:", badgeLookupErr);
+        return;
+      }
 
       const badgeId = badgeRow?.id;
       if (!badgeId) return;
@@ -716,7 +729,8 @@ export default function Collections({
       );
       if (badgeErr) throw badgeErr;
     } catch (err) {
-      console.error("Failed to unlock section badge:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn("Failed to unlock section badge:", message);
     }
   }
 
@@ -743,11 +757,24 @@ export default function Collections({
     await persistMeta(moduleId, nextRevision);
   }
 
-  function startSolve(problem: string, problemDifficulty?: string) {
+  function startSolve(
+    moduleId: string,
+    problem: string,
+    problemDifficulty?: string,
+  ) {
+    setPanelMode("solve");
+    setActiveModuleId(moduleId);
     setTopic(problem);
     if (problemDifficulty === "Easy") setMockDifficulty("Beginner");
     else if (problemDifficulty === "Difficult") setMockDifficulty("Advanced");
     else setMockDifficulty("Intermediate");
+  }
+
+  function startSectionMockInterview(sectionTopic: string) {
+    setPanelMode("interview");
+    setActiveModuleId(null);
+    setTopic(sectionTopic);
+    setMockDifficulty("Intermediate");
   }
 
   function pickRandomProblem() {
@@ -907,37 +934,6 @@ export default function Collections({
   const overallPct =
     allTotal > 0 ? Math.round((allSolved / allTotal) * 100) : 0;
 
-  const sectionTotals: Record<string, number> = {};
-  const sectionSolved: Record<string, number> = {};
-  items.forEach((item) => {
-    sectionTotals[item.sectionKey] = (sectionTotals[item.sectionKey] || 0) + 1;
-    if (doneMap[item.id]) {
-      sectionSolved[item.sectionKey] =
-        (sectionSolved[item.sectionKey] || 0) + 1;
-    }
-  });
-
-  const sectionCompletion: Record<string, boolean> = {};
-  Object.keys(sectionTotals).forEach((key) => {
-    sectionCompletion[key] =
-      sectionTotals[key] > 0 && sectionSolved[key] === sectionTotals[key];
-  });
-
-  const normalizedSectionCompletion: Record<string, boolean> = {};
-  Object.entries(sectionCompletion).forEach(([key, completed]) => {
-    normalizedSectionCompletion[normalizeSectionKey(key)] = completed;
-  });
-
-  function isSectionUnlocked(sectionKey?: string) {
-    const normalized = normalizeSectionKey(sectionKey);
-    if (!normalized) return false;
-    return !!normalizedSectionCompletion[normalized];
-  }
-
-  const unlockedCheatSheets = cheatSheets.filter((sheet) =>
-    isSectionUnlocked(sheet.sectionKey),
-  ).length;
-
   const sectionList: SectionItem[] = (() => {
     const map = new Map<string, SectionItem>();
 
@@ -960,6 +956,54 @@ export default function Collections({
       (a, b) => a.orderNumber - b.orderNumber,
     );
   })();
+
+  const normalizedSectionCompletion: Record<string, boolean> = {};
+  sectionList.forEach((section) => {
+    const sectionItems = items.filter(
+      (it) =>
+        (section.id && it.sectionId && it.sectionId === section.id) ||
+        normalizeSectionKey(it.sectionKey) ===
+          normalizeSectionKey(section.sectionKey),
+    );
+
+    const solvedCount = sectionItems.filter((it) => doneMap[it.id]).length;
+    normalizedSectionCompletion[normalizeSectionKey(section.sectionKey)] =
+      sectionItems.length > 0 && solvedCount === sectionItems.length;
+  });
+
+  function resolveUnlockSectionKey(sectionKey?: string, labelOrTitle?: string) {
+    const normalizedFromSource = normalizeSectionKey(sectionKey);
+    const normalizedLabel = normalizeSectionKey(labelOrTitle);
+
+    if (normalizedLabel === "command-line") {
+      // Prefer explicit command-line section completion if present.
+      if (normalizedSectionCompletion["command-line"] !== undefined) {
+        return "command-line";
+      }
+
+      // Fallback to a section whose title resolves to command-line.
+      const matchedSection = sectionList.find(
+        (section) => normalizeSectionKey(section.title) === "command-line",
+      );
+      if (matchedSection) {
+        return normalizeSectionKey(matchedSection.sectionKey);
+      }
+
+      return "command-line";
+    }
+
+    return normalizedFromSource;
+  }
+
+  function isSectionUnlocked(sectionKey?: string, labelOrTitle?: string) {
+    const normalized = resolveUnlockSectionKey(sectionKey, labelOrTitle);
+    if (!normalized) return false;
+    return !!normalizedSectionCompletion[normalized];
+  }
+
+  const unlockedCheatSheets = cheatSheets.filter((sheet) =>
+    isSectionUnlocked(sheet.sectionKey, sheet.title),
+  ).length;
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
   const easyRatio = clamp01(easySolved / easyTotal);
@@ -1289,7 +1333,7 @@ export default function Collections({
                                 <td className="px-5 py-3 text-center align-middle">
                                   <button
                                     onClick={() =>
-                                      startSolve(it.name, it.difficulty)
+                                      startSolve(it.id, it.name, it.difficulty)
                                     }
                                     className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
                                   >
@@ -1399,6 +1443,21 @@ export default function Collections({
                             )}
                           </tbody>
                         </table>
+                      </div>
+
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            startSectionMockInterview(
+                              section.title ||
+                                humanizeSectionTitle(section.sectionKey),
+                            );
+                          }}
+                          className="inline-flex h-10 items-center justify-center rounded-md border border-blue-500/40 bg-blue-500/10 px-4 text-sm text-blue-300 hover:bg-blue-500/20 transition-colors"
+                        >
+                          Mock Interview
+                        </button>
                       </div>
                     </div>
                   )}
@@ -1582,13 +1641,13 @@ export default function Collections({
                     src={badge.src}
                     alt={badge.label}
                     className={`h-11 w-11 object-contain ${
-                      isSectionUnlocked(badge.sectionKey)
+                      isSectionUnlocked(badge.sectionKey, badge.label)
                         ? "opacity-100"
                         : "opacity-35 grayscale"
                     }`}
                   />
                   <span className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/15 bg-[#0f1115]/95 px-2 py-1 text-[10px] text-zinc-100 opacity-0 shadow-lg shadow-black/40 transition-opacity duration-150 group-hover:opacity-100">
-                    {isSectionUnlocked(badge.sectionKey)
+                    {isSectionUnlocked(badge.sectionKey, badge.label)
                       ? badge.label
                       : `${badge.label} (Locked)`}
                   </span>
@@ -1612,7 +1671,10 @@ export default function Collections({
 
             <div className="mt-4 space-y-3">
               {cheatSheets.map((sheet) => {
-                const unlocked = isSectionUnlocked(sheet.sectionKey);
+                const unlocked = isSectionUnlocked(
+                  sheet.sectionKey,
+                  sheet.title,
+                );
 
                 if (!unlocked) {
                   return (
@@ -1666,9 +1728,13 @@ export default function Collections({
         <MockInterviewPanel
           difficulty={mockDifficulty}
           topic={topic || undefined}
+          mode={panelMode}
+          moduleId={activeModuleId || undefined}
           onClose={() => {
             setMockDifficulty(null);
             setTopic(null);
+            setPanelMode("interview");
+            setActiveModuleId(null);
           }}
         />
       )}
