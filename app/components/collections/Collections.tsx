@@ -47,6 +47,17 @@ type SectionItem = {
   orderNumber: number;
 };
 
+type CommandItem = {
+  command: string;
+  description: string;
+  category: string;
+};
+
+type CommandCategory = {
+  name: string;
+  commands: CommandItem[];
+};
+
 function normalizeExternalUrl(rawUrl: string) {
   const trimmed = String(rawUrl || "").trim();
   if (!trimmed) return "";
@@ -133,6 +144,189 @@ function humanizeSectionTitle(sectionKey?: string | null) {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
+
+const COMMAND_LINE_CHEATSHEET: CommandCategory[] = [
+  {
+    name: "NAVIGATION",
+    commands: [
+      {
+        command: "pwd",
+        description: "Print working directory",
+        category: "NAVIGATION",
+      },
+      {
+        command: "ls -la",
+        description: "List all files with details",
+        category: "NAVIGATION",
+      },
+      {
+        command: "cd ~",
+        description: "Go to home directory",
+        category: "NAVIGATION",
+      },
+      {
+        command: "cd -",
+        description: "Go to previous directory",
+        category: "NAVIGATION",
+      },
+      {
+        command: "tree -L 2",
+        description: "Tree view, 2 levels deep",
+        category: "NAVIGATION",
+      },
+    ],
+  },
+  {
+    name: "FILE OPERATIONS",
+    commands: [
+      {
+        command: "cp -r src/ dst/",
+        description: "Recursive copy",
+        category: "FILE OPERATIONS",
+      },
+      {
+        command: "mv file newname",
+        description: "Move or rename file",
+        category: "FILE OPERATIONS",
+      },
+      {
+        command: "rm -rf dir/",
+        description: "Force remove directory",
+        category: "FILE OPERATIONS",
+      },
+      {
+        command: "ln -s target link",
+        description: "Create symbolic link",
+        category: "FILE OPERATIONS",
+      },
+      {
+        command: "touch file.txt",
+        description: "Create empty file / update timestamp",
+        category: "FILE OPERATIONS",
+      },
+    ],
+  },
+  {
+    name: "SEARCH & TEXT",
+    commands: [
+      {
+        command: 'grep -rn "pat" .',
+        description: "Recursive search with line numbers",
+        category: "SEARCH & TEXT",
+      },
+      {
+        command: 'find . -name "*.log"',
+        description: "Find files by name pattern",
+        category: "SEARCH & TEXT",
+      },
+      {
+        command: "cat file | sort | uniq",
+        description: "Sort and deduplicate lines",
+        category: "SEARCH & TEXT",
+      },
+      {
+        command: 'awk "{print $1}" f',
+        description: "Print first column",
+        category: "SEARCH & TEXT",
+      },
+      {
+        command: 'sed "s/old/new/g"',
+        description: "Global find & replace",
+        category: "SEARCH & TEXT",
+      },
+    ],
+  },
+  {
+    name: "PERMISSIONS",
+    commands: [
+      {
+        command: "chmod 755 file",
+        description: "rwxr-xr-x permissions",
+        category: "PERMISSIONS",
+      },
+      {
+        command: "chmod +x script.sh",
+        description: "Make executable",
+        category: "PERMISSIONS",
+      },
+      {
+        command: "chown user:grp f",
+        description: "Change owner and group",
+        category: "PERMISSIONS",
+      },
+      {
+        command: "umask 022",
+        description: "Default file permission mask",
+        category: "PERMISSIONS",
+      },
+      {
+        command: "stat file",
+        description: "Show detailed file metadata",
+        category: "PERMISSIONS",
+      },
+    ],
+  },
+  {
+    name: "REDIRECTION & PIPES",
+    commands: [
+      {
+        command: "cmd > out.txt",
+        description: "Redirect stdout to file",
+        category: "REDIRECTION & PIPES",
+      },
+      {
+        command: "cmd >> out.txt",
+        description: "Append stdout to file",
+        category: "REDIRECTION & PIPES",
+      },
+      {
+        command: "cmd 2>&1 out.txt",
+        description: "Redirect stderr to stdout",
+        category: "REDIRECTION & PIPES",
+      },
+      {
+        command: "cmd1 | cmd2",
+        description: "Pipe stdout to next command",
+        category: "REDIRECTION & PIPES",
+      },
+      {
+        command: "tee file.txt",
+        description: "Write to file and stdout",
+        category: "REDIRECTION & PIPES",
+      },
+    ],
+  },
+  {
+    name: "COMPRESSION & ARCHIVES",
+    commands: [
+      {
+        command: "tar -czvf a.tar.gz dir/",
+        description: "Create gzip archive",
+        category: "COMPRESSION & ARCHIVES",
+      },
+      {
+        command: "tar -xzvf a.tar.gz",
+        description: "Extract gzip archive",
+        category: "COMPRESSION & ARCHIVES",
+      },
+      {
+        command: "zip -r a.zip dir/",
+        description: "Create zip dir archive",
+        category: "COMPRESSION & ARCHIVES",
+      },
+      {
+        command: "unzip file.zip",
+        description: "Extract zip file",
+        category: "COMPRESSION & ARCHIVES",
+      },
+      {
+        command: "gzip / gunzip",
+        description: "Compress/decompress gz files",
+        category: "COMPRESSION & ARCHIVES",
+      },
+    ],
+  },
+];
 
 function getSectionInterviewSummary(sectionTitle?: string | null) {
   const key = normalizeSectionKey(sectionTitle);
@@ -370,8 +564,17 @@ export default function Collections({
   } | null>(null);
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [noteSaveError, setNoteSaveError] = useState<string>("");
+  const [selectedCommand, setSelectedCommand] = useState<CommandItem | null>(
+    null,
+  );
+  const [showCommandLineModal, setShowCommandLineModal] = useState(false);
   const hasAnyPopupOpen =
-    !!youtubePopup || !!docPopup || !!notePopup || !!interviewIntroPopup;
+    !!youtubePopup ||
+    !!docPopup ||
+    !!notePopup ||
+    !!interviewIntroPopup ||
+    !!selectedCommand ||
+    showCommandLineModal;
 
   useEffect(() => {
     if (!hasAnyPopupOpen) return;
@@ -382,6 +585,8 @@ export default function Collections({
         setDocPopup(null);
         setNotePopup(null);
         setInterviewIntroPopup(null);
+        setSelectedCommand(null);
+        setShowCommandLineModal(false);
       }
     }
 
@@ -745,7 +950,10 @@ export default function Collections({
         .eq("id", moduleId)
         .maybeSingle();
       if (moduleErr) {
-        console.error("Step 1 - Get module section_key failed:", moduleErr?.message || moduleErr);
+        console.error(
+          "Step 1 - Get module section_key failed:",
+          moduleErr?.message || moduleErr,
+        );
         throw moduleErr;
       }
 
@@ -766,7 +974,10 @@ export default function Collections({
         .select("id", { count: "exact", head: true })
         .eq("section_key", sectionKey);
       if (totalErr) {
-        console.error("Step 3 - Count total modules failed:", totalErr?.message || totalErr);
+        console.error(
+          "Step 3 - Count total modules failed:",
+          totalErr?.message || totalErr,
+        );
         throw totalErr;
       }
 
@@ -790,7 +1001,9 @@ export default function Collections({
       const completedCount = (completedRows ?? []).length;
       if (completedCount !== sectionModuleIds.length) return;
 
-      console.log(`Section: ${sectionKey}, Total: ${totalCount}, Completed: ${completedCount}`);
+      console.log(
+        `Section: ${sectionKey}, Total: ${totalCount}, Completed: ${completedCount}`,
+      );
       if (!totalCount || completedCount !== totalCount) {
         console.log("Not all modules completed yet");
         return;
@@ -802,7 +1015,10 @@ export default function Collections({
         .eq("section_key", sectionKey)
         .limit(1);
       if (badgeLookupErr) {
-        console.error("Step 5 - Lookup badge failed:", badgeLookupErr?.message || badgeLookupErr);
+        console.error(
+          "Step 5 - Lookup badge failed:",
+          badgeLookupErr?.message || badgeLookupErr,
+        );
         throw badgeLookupErr;
       }
 
@@ -822,13 +1038,19 @@ export default function Collections({
         { onConflict: "user_id,badge_id", ignoreDuplicates: true },
       );
       if (badgeErr) {
-        console.error("Step 6 - Upsert user_badges failed:", badgeErr?.message || badgeErr);
+        console.error(
+          "Step 6 - Upsert user_badges failed:",
+          badgeErr?.message || badgeErr,
+        );
         throw badgeErr;
       }
-      
+
       console.log("Badge unlocked successfully!");
     } catch (err) {
-      console.error("Failed to unlock section badge:", err instanceof Error ? err.message : String(err));
+      console.error(
+        "Failed to unlock section badge:",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -906,7 +1128,6 @@ export default function Collections({
     setTopic(sectionTopic);
     setMockDifficulty("Intermediate");
   }
-
 
   function pickRandomProblem() {
     if (items.length === 0) return;
@@ -1914,6 +2135,24 @@ export default function Collections({
                   );
                 }
 
+                // Special handling for Command Line cheatsheet
+                if (normalizeSectionKey(sheet.title) === "command-line") {
+                  return (
+                    <button
+                      key={sheet.title}
+                      type="button"
+                      onClick={() => setShowCommandLineModal(true)}
+                      className="w-full flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-zinc-100 hover:bg-white/10 transition-colors"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-xl">📄</span>
+                        <span className="text-base">{sheet.title}</span>
+                      </span>
+                      <span className="text-sm">↗</span>
+                    </button>
+                  );
+                }
+
                 return (
                   <a
                     key={sheet.title}
@@ -2135,6 +2374,123 @@ export default function Collections({
                 className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors disabled:opacity-60"
               >
                 {isSavingNote ? "Saving..." : "Save Note"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCommandLineModal && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => setShowCommandLineModal(false)}
+        >
+          <div
+            className="w-full max-w-2xl max-h-[80vh] overflow-hidden rounded-2xl border border-white/15 bg-[#0f1115] p-6 shadow-2xl shadow-black/70 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-semibold text-zinc-100">
+                Command Line Cheatsheet
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowCommandLineModal(false)}
+                className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 space-y-4">
+              {COMMAND_LINE_CHEATSHEET.map((category) => (
+                <div key={category.name}>
+                  <h3 className="text-sm font-semibold text-zinc-300 uppercase tracking-wider mb-2">
+                    {category.name}
+                  </h3>
+                  <div className="space-y-2">
+                    {category.commands.map((cmd) => (
+                      <button
+                        key={cmd.command}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCommand(cmd);
+                        }}
+                        className="w-full text-left rounded-lg border border-white/10 bg-white/3 p-3 hover:bg-white/10 transition-colors"
+                      >
+                        <code className="font-mono text-sm text-blue-400">
+                          {cmd.command}
+                        </code>
+                        <p className="mt-1 text-xs text-zinc-400">
+                          {cmd.description}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCommand && (
+        <div
+          className="fixed inset-0 z-70 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => setSelectedCommand(null)}
+        >
+          <div
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-white/15 bg-[#0f1115] p-6 shadow-2xl shadow-black/70"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-semibold text-zinc-100">Command</h3>
+                <p className="mt-1 text-xs text-zinc-400 uppercase tracking-wider">
+                  {selectedCommand.category}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedCommand(null)}
+                className="rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mb-6 rounded-lg border border-white/10 bg-black/40 p-4">
+              <code className="font-mono text-sm text-blue-400 break-all">
+                {selectedCommand.command}
+              </code>
+            </div>
+
+            <div>
+              <h4 className="mb-2 text-sm font-medium text-zinc-300">
+                Description
+              </h4>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                {selectedCommand.description}
+              </p>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(selectedCommand.command);
+                  setSelectedCommand(null);
+                }}
+                className="flex-1 rounded-md border border-blue-500/40 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-300 hover:bg-blue-500/20 transition-colors"
+              >
+                Copy Command
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedCommand(null)}
+                className="flex-1 rounded-md border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-white/10 transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>

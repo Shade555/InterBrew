@@ -1,0 +1,58 @@
+<svg width="640" height="80" viewBox="0 0 640 80" xmlns="http://www.w3.org/2000/svg">
+  <!-- Frame 1 -->
+  <g x="0">
+    <circle cx="50" cy="25" r="12" fill="#3b82f6"/>
+    <rect x="35" y="40" width="30" height="25" fill="#10b981" rx="2"/>
+    <rect x="32" y="48" width="8" height="17" fill="#6366f1"/>
+    <rect x="52" y="50" width="8" height="15" fill="#6366f1"/>
+  </g>
+  <!-- Frame 2 -->
+  <g x="80">
+    <circle cx="50" cy="25" r="12" fill="#3b82f6"/>
+    <rect x="35" y="40" width="30" height="25" fill="#10b981" rx="2"/>
+    <rect x="32" y="45" width="8" height="20" fill="#6366f1"/>
+    <rect x="52" y="52" width="8" height="13" fill="#6366f1"/>
+  </g>
+  <!-- Frame 3 -->
+  <g x="160">
+    <circle cx="50" cy="25" r="12" fill="#3b82f6"/>
+    <rect x="35" y="40" width="30" height="25" fill="#10b981" rx="2"/>
+    <rect x="32" y="50" width="8" height="15" fill="#6366f1"/>
+    <rect x="52" y="48" width="8" height="17" fill="#6366f1"/>
+  </g>
+  <!-- Frame 4 -->
+  <g x="240">
+    <circle cx="50" cy="25" r="12" fill="#3b82f6"/>
+    <rect x="35" y="40" width="30" height="25" fill="#10b981" rx="2"/>
+    <rect x="32" y="52" width="8" height="13" fill="#6366f1"/>
+    <rect x="52" y="45" width="8" height="20" fill="#6366f1"/>
+  </g>
+  <!-- Frame 5 -->
+  <g x="320">
+    <circle cx="50" cy="25" r="12" fill="#3b82f6"/>
+    <rect x="35" y="40" width="30" height="25" fill="#10b981" rx="2"/>
+    <rect x="32" y="48" width="8" height="17" fill="#6366f1"/>
+    <rect x="52" y="50" width="8" height="15" fill="#6366f1"/>
+  </g>
+  <!-- Frame 6 -->
+  <g x="400">
+    <circle cx="50" cy="25" r="12" fill="#3b82f6"/>
+    <rect x="35" y="40" width="30" height="25" fill="#10b981" rx="2"/>
+    <rect x="32" y="45" width="8" height="20" fill="#6366f1"/>
+    <rect x="52" y="52" width="8" height="13" fill="#6366f1"/>
+  </g>
+  <!-- Frame 7 -->
+  <g x="480">
+    <circle cx="50" cy="25" r="12" fill="#3b82f6"/>
+    <rect x="35" y="40" width="30" height="25" fill="#10b981" rx="2"/>
+    <rect x="32" y="50" width="8" height="15" fill="#6366f1"/>
+    <rect x="52" y="48" width="8" height="17" fill="#6366f1"/>
+  </g>
+  <!-- Frame 8 -->
+  <g x="560">
+    <circle cx="50" cy="25" r="12" fill="#3b82f6"/>
+    <rect x="35" y="40" width="30" height="25" fill="#10b981" rx="2"/>
+    <rect x="32" y="52" width="8" height="13" fill="#6366f1"/>
+    <rect x="52" y="45" width="8" height="20" fill="#6366f1"/>
+  </g>
+</svg>
