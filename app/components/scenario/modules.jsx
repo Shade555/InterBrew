@@ -3,7 +3,11 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import "./modules.css";
 
-export default function Modules({ onSelect, selectedModule }) {
+export default function Modules({
+  onSelect,
+  selectedModule,
+  selectedScenario,
+}) {
   const [modules, setModules] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -16,10 +20,17 @@ export default function Modules({ onSelect, selectedModule }) {
       }
 
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from("modules")
           .select("*")
           .order("order_number", { ascending: true });
+
+        // Filter by scenario if selected
+        if (selectedScenario?.id) {
+          query = query.eq("scenario_id", selectedScenario.id);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
           console.error("Error fetching modules:", error);
@@ -34,7 +45,7 @@ export default function Modules({ onSelect, selectedModule }) {
     }
 
     fetchModules();
-  }, []);
+  }, [selectedScenario?.id]);
 
   return (
     <div className="h-full flex flex-col">
@@ -53,13 +64,17 @@ export default function Modules({ onSelect, selectedModule }) {
       </div>
 
       <div className="modules-scroll flex flex-col gap-2.5 overflow-y-auto flex-1 pr-1">
-        {loading ? (
+        {!selectedScenario ? (
+          <p className="text-xs text-gray-500 text-center mt-4">
+            Select a scenario to view its modules
+          </p>
+        ) : loading ? (
           <p className="text-xs text-gray-500 text-center mt-4">
             Loading modules...
           </p>
         ) : modules.length === 0 ? (
           <p className="text-xs text-gray-500 text-center mt-4">
-            No modules found.
+            No modules found in this scenario.
           </p>
         ) : (
           modules.map((mod) => (

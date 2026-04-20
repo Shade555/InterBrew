@@ -260,21 +260,12 @@ export default function LessonView({ module, onBack, onComplete }) {
     isAiSpeakingRef.current = true;
     setIsAiSpeaking(true);
     utter.onstart = () => {
-      // Delay mic by 1 s so TTS echo doesn't trigger the interrupt path
-      setTimeout(() => {
-        if (isAiSpeakingRef.current && !interviewEndedRef.current)
-          startListening();
-      }, 1000);
+      // No automatic listening — user will click button to speak
     };
     utter.onend = () => {
       isAiSpeakingRef.current = false;
       setIsAiSpeaking(false);
-      if (
-        !recognitionRef.current &&
-        !interviewEndedRef.current &&
-        !isSendingRef.current
-      )
-        startListening();
+      // No automatic listening — user will click button to speak
     };
     utter.onerror = () => {
       isAiSpeakingRef.current = false;
@@ -335,20 +326,24 @@ export default function LessonView({ module, onBack, onComplete }) {
         recognitionRef.current = null;
         setIsListening(false);
       }
-      // Auto-restart unless interview is over or a send is in flight
-      if (!interviewEndedRef.current && !isSendingRef.current) startListening();
+      // No automatic restart — user will click button again to continue
     };
 
-    recognition.onerror = () => {
-      // onend fires after onerror and handles restart
+    recognition.onerror = (event) => {
+      console.warn("Speech recognition error:", event.error);
+      setIsListening(false);
+      // Don't stop the recognizer on error, let onend handle it
+      // Some errors are recoverable if we just wait
     };
 
     try {
       recognitionRef.current = recognition;
       recognition.start();
       setIsListening(true);
-    } catch (_) {
+    } catch (e) {
+      console.warn("Failed to start speech recognition:", e);
       recognitionRef.current = null;
+      setIsListening(false);
     }
   };
 
@@ -372,7 +367,7 @@ export default function LessonView({ module, onBack, onComplete }) {
     setVoiceTranscript("");
     if (!answer) {
       isSendingRef.current = false;
-      if (!interviewEndedRef.current) startListening();
+      // No automatic restart — user will click button again
       return;
     }
     setInterviewMessages((prev) => {
@@ -472,6 +467,9 @@ export default function LessonView({ module, onBack, onComplete }) {
     const userResponses = interviewMessagesRef.current
       .filter((m) => m.role === "user")
       .map((m) => m.text);
+    const aiMessages = interviewMessagesRef.current
+      .filter((m) => m.role === "ai")
+      .map((m) => m.text);
     const avgResponseLength =
       userResponses.length > 0
         ? Math.round(
@@ -479,6 +477,9 @@ export default function LessonView({ module, onBack, onComplete }) {
               userResponses.length,
           )
         : 0;
+
+    // Count total questions asked (number of AI messages)
+    const totalQuestionsAsked = aiMessages.length;
 
     // Hesitation: count filler words across all user responses
     const fillerPattern =
@@ -562,7 +563,7 @@ export default function LessonView({ module, onBack, onComplete }) {
     else
       improvements.push("Provide more detailed responses during the interview");
 
-    if (userResponses.length >= 4)
+    if (userResponses.length >= totalQuestionsAsked && totalQuestionsAsked > 0)
       strengths.push("Completed all interview questions");
     if (correctCount === totalQuiz && totalQuiz > 0)
       strengths.push("Perfect quiz score!");
@@ -596,6 +597,7 @@ export default function LessonView({ module, onBack, onComplete }) {
       },
       interviewStats: {
         questionsAnswered: userResponses.length,
+        totalQuestions: totalQuestionsAsked,
         avgWords: avgResponseLength,
       },
       behavioralStats: {
@@ -983,6 +985,48 @@ export default function LessonView({ module, onBack, onComplete }) {
                     )}
                   </div>
                 </div>
+                {/* Start/Stop speaking button */}
+                <button
+                  onClick={() => {
+                    if (isListening) {
+                      // Stop listening and send
+                      stopAndSend();
+                    } else {
+                      // Interrupt bot and start listening
+                      window.speechSynthesis.cancel();
+                      isAiSpeakingRef.current = false;
+                      setIsAiSpeaking(false);
+
+                      // Stop any existing recognizer first
+                      if (recognitionRef.current) {
+                        try {
+                          recognitionRef.current.stop();
+                        } catch (_) {}
+                        recognitionRef.current = null;
+                      }
+
+                      // Clear any pending send delay
+                      if (sendDelayRef.current) {
+                        clearTimeout(sendDelayRef.current);
+                        sendDelayRef.current = null;
+                      }
+
+                      // Small delay to let recognizer fully stop before restarting
+                      setTimeout(() => {
+                        if (!isListening) {
+                          startListening();
+                        }
+                      }, 100);
+                    }
+                  }}
+                  className={`relative z-10 mt-6 px-8 py-3 rounded-lg font-medium text-sm transition-all ${
+                    isListening
+                      ? "bg-rose-500/20 border border-rose-500/40 text-rose-400 hover:bg-rose-500/30"
+                      : "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30"
+                  }`}
+                >
+                  {isListening ? "Click to Stop" : "Start to Speak"}
+                </button>
                 {/* End interview button */}
                 <button
                   onClick={() => {
@@ -1061,7 +1105,8 @@ export default function LessonView({ module, onBack, onComplete }) {
               </div>
               <div className="bg-white/3 border border-white/8 rounded-xl p-4 text-center">
                 <p className="text-2xl font-bold text-white">
-                  {feedback.interviewStats.questionsAnswered}/4
+                  {feedback.interviewStats.questionsAnswered}/
+                  {feedback.interviewStats.totalQuestions}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   Interview Questions (avg {feedback.interviewStats.avgWords}{" "}
