@@ -1178,7 +1178,9 @@ export default function Dashboard() {
             <h3 className="text-base font-semibold text-zinc-100 mb-6 leading-relaxed">
               45 must know interview questions
             </h3>
-            <button className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
+            <button 
+              onClick={() => router.push("/collections")}
+              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
               Learn
             </button>
           </div>
@@ -1188,7 +1190,9 @@ export default function Dashboard() {
             <h3 className="text-base font-semibold text-zinc-100 mb-6 leading-relaxed">
               Operating System Essentials
             </h3>
-            <button className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
+            <button 
+              onClick={() => router.push("/collections")}
+              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
               Learn
             </button>
           </div>
@@ -1198,7 +1202,9 @@ export default function Dashboard() {
             <h3 className="text-base font-semibold text-zinc-100 mb-6 leading-relaxed">
               Challenge your friends in an interview battle
             </h3>
-            <button className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
+            <button 
+              onClick={() => router.push("/challenge")}
+              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
               view
             </button>
           </div>

@@ -5,7 +5,7 @@ import { supabase } from "../../../lib/supabaseClient";
 import tryIncrementStreak from "../../../lib/streak";
 import OrbVisualization from "./OrbVisualization";
 
-function logTtsError(e) {
+function logTtsError(e: any) {
   try {
     const msg = e?.message ?? String(e);
     if (/interrupt|interrupted|cancel|aborted?/i.test(msg)) return;
@@ -18,7 +18,7 @@ function logTtsError(e) {
 // Spherical speech visualization component with advanced animation
 function SpeechVisualization({ isListening, isThinking }: { isListening: boolean; isThinking: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | undefined>(undefined);
   const audioDataRef = useRef<number[]>(Array(24).fill(0));
   const particlesRef = useRef<Array<{ x: number; y: number; vx: number; vy: number; life: number; size: number }>>([]);
   const timeRef = useRef(0);
@@ -237,14 +237,14 @@ export default function ExamWindow({
   topic: string;
   moduleId?: string;
 }) {
-  const [history, setHistory] = useState([]);
-  const historyRef = useRef([]);
+  const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
+  const historyRef = useRef<Array<{ role: string; content: string }>>([]);
   const [status, setStatus] = useState("Ready");
   const [questionIndex, setQuestionIndex] = useState(0);
   const finishedRef = useRef(false);
-  const systemPromptRef = useRef(null);
+  const systemPromptRef = useRef<string | null>(null);
   const [started, setStarted] = useState(false);
-  const [favAdded, setFavAdded] = useState([]);
+  const [favAdded, setFavAdded] = useState<string[]>([]);
   const awaitingCloseRef = useRef(false);
   const [isThinking, setIsThinking] = useState(false);
   const lastMessageRef = useRef("");
@@ -282,7 +282,7 @@ export default function ExamWindow({
   }, [started, onClose]);
 
   const { isListening, startListening, stopListening, speak, stopSpeaking } =
-    useSpeech(async (userText) => {
+    useSpeech(async (userText: string) => {
       setStatus("Processing...");
       setIsThinking(true);
 
@@ -751,21 +751,14 @@ Output Format:
             ) : (
               <button
                 onClick={() => {
-                  if (listeningToggleRef.current) return; // Prevent rapid clicks
-                  listeningToggleRef.current = true;
-
                   if (isListening) {
                     stopListening();
-                    listeningToggleRef.current = false;
                     return;
                   }
                   try {
                     stopSpeaking?.();
                   } catch (e) {}
                   startListening();
-                  setTimeout(() => {
-                    listeningToggleRef.current = false;
-                  }, 300);
                 }}
                 className={`px-10 py-4 rounded-full text-white font-bold text-lg transition-all transform hover:scale-105 active:scale-95 shadow-lg select-none flex-shrink-0 ${
                   isListening
