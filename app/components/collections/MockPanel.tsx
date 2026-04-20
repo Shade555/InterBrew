@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import ExamWindow from "../mock_int/ExamWindow";
+
 // supabase not needed here; favourites handled in the interview panel
 
 export default function MockPanel({ topic, onClose, onStart }: { topic: string; onClose: () => void; onStart?: (d: string) => void }) {
@@ -13,6 +15,7 @@ export default function MockPanel({ topic, onClose, onStart }: { topic: string; 
     });
     return init;
   });
+  const [startingInterview, setStartingInterview] = useState<string | null>(null);
 
   function toggle(level: string, round: string) {
     setCompleted((prev) => {
@@ -24,7 +27,18 @@ export default function MockPanel({ topic, onClose, onStart }: { topic: string; 
     });
   }
 
-  
+  if (startingInterview) {
+    return (
+      <ExamWindow
+        difficulty={startingInterview}
+        topic={topic}
+        onClose={() => {
+          setStartingInterview(null);
+          onClose?.();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -44,7 +58,7 @@ export default function MockPanel({ topic, onClose, onStart }: { topic: string; 
               <div className="flex items-center justify-between">
                 <div
                   className="font-medium cursor-pointer"
-                  onClick={() => onStart?.(lvl)}
+                  onClick={() => setStartingInterview(lvl)}
                 >
                   {lvl}
                 </div>
@@ -52,7 +66,7 @@ export default function MockPanel({ topic, onClose, onStart }: { topic: string; 
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      onStart?.(lvl);
+                      setStartingInterview(lvl);
                     }}
                     className="px-3 py-1 rounded-md bg-blue-600 text-white text-sm mr-2"
                   >
