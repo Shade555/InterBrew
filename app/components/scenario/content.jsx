@@ -43,11 +43,81 @@ export default function Content({ selectedScenario, onStartPractice }) {
       }
 
       try {
-        // These tables don't exist yet — skip fetching to avoid 404s
-        // Uncomment and create the tables when ready:
-        // overview_stats, practice_history, ai_insights, performance_chart
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser();
+
+        if (userError || !user) {
+          setOverviewStats([]);
+          setRecentActivity([]);
+          setInsights([]);
+          setChartData([]);
+          return;
+        }
+
+        const [
+          { data: scenarioData, error: scenarioError },
+          { data: modulesData, error: modulesError },
+          { data: progressData, error: progressError },
+        ] = await Promise.all([
+          supabase.from("scenarios").select("id, title"),
+          supabase.from("modules").select("id, scenario_id"),
+          supabase
+            .from("user_module_progress")
+            .select("module_id, completed")
+            .eq("user_id", user.id),
+        ]);
+
+        if (scenarioError || modulesError || progressError) {
+          console.error("Failed to load scenario history data:", {
+            scenarioError,
+            modulesError,
+            progressError,
+          });
+          setRecentActivity([]);
+          return;
+        }
+
+        const completedModuleIds = new Set(
+          (progressData || [])
+            .filter((row) => row.completed)
+            .map((row) => row.module_id),
+        );
+
+        const scenariosWithProgress = (scenarioData || [])
+          .map((scenario) => {
+            const scenarioModules = (modulesData || []).filter(
+              (m) => m.scenario_id === scenario.id,
+            );
+            const totalModules = scenarioModules.length;
+            const completedModules = scenarioModules.filter((m) =>
+              completedModuleIds.has(m.id),
+            ).length;
+
+            const progress =
+              totalModules > 0
+                ? Math.round((completedModules / totalModules) * 100)
+                : 0;
+
+            let badge = "Average";
+            if (progress === 100) badge = "Outstanding";
+            else if (progress >= 75) badge = "Excellent";
+            else if (progress >= 40) badge = "Good";
+
+            return {
+              id: scenario.id,
+              scenario: scenario.title,
+              date: `${completedModules}/${totalModules} modules completed`,
+              score: progress,
+              badge,
+            };
+          })
+          .filter((item) => item.score > 0)
+          .sort((a, b) => b.score - a.score);
+
+        setRecentActivity(scenariosWithProgress);
         setOverviewStats([]);
-        setRecentActivity([]);
         setInsights([]);
         setChartData([]);
       } catch (err) {
