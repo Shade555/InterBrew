@@ -789,11 +789,6 @@ export default function Collections({
 
       const completedCount = (completedRows ?? []).length;
       if (completedCount !== sectionModuleIds.length) return;
-        .eq("collection_modules.section_key", sectionKey);
-      if (completedErr) {
-        console.error("Step 4 - Count completed modules failed:", completedErr?.message || completedErr);
-        throw completedErr;
-      }
 
       console.log(`Section: ${sectionKey}, Total: ${totalCount}, Completed: ${completedCount}`);
       if (!totalCount || completedCount !== totalCount) {
