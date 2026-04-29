@@ -187,7 +187,9 @@ export default function SoloLevelingSystem() {
                 style={{ width: `${xpProgressPercent}%` }}
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">{xpInLevel}/1000 XP</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {xp.toLocaleString()} XP
+            </p>
           </div>
         </div>
       </div>

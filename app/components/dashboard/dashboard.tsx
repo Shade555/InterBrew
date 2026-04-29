@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { supabase } from "../../../lib/supabaseClient";
 import SoloLevelingSystem from "./SoloLevelingSystem";
+import GoalCompletion from "./GoalCompletion";
 
 function Calendar() {
   const today = new Date();
@@ -567,9 +568,6 @@ export default function Dashboard() {
   const [loadingAiReport, setLoadingAiReport] = useState(true);
   const [regeneratingReport, setRegeneratingReport] = useState(false);
   const [showGridLines, setShowGridLines] = useState(true);
-  const [yAxisMetric, setYAxisMetric] = useState<
-    "improvement" | "accuracy" | "readiness"
-  >("improvement");
   const [badges, setBadges] = useState<Array<any>>([]);
   const [unlockedSections, setUnlockedSections] = useState<
     Record<string, boolean>
@@ -582,17 +580,21 @@ export default function Dashboard() {
   } | null>(null);
   const [loadingCurrentModule, setLoadingCurrentModule] = useState(true);
 
-  // Sample data for the last 4 weeks
-  const graphData = [
-    55, 62, 48, 65, 58, 72, 60, 78, 65, 82, 75, 88, 80, 92, 85, 95,
-  ];
+  // Sample data for the week
+  const fullGraphData = [55, 62, 65, 72, 78, 82, 88];
   const weeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
 
-  const metricLabels = {
-    improvement: "Improvement Score",
-    accuracy: "Accuracy %",
-    readiness: "Readiness Score",
+  // Get only graph data up to today
+  const getGraphDataUpToToday = () => {
+    const today = new Date();
+    const day = today.getDay();
+    // Calculate which day of the week (0 = Monday for our purposes, 6 = Sunday)
+    const dayOfWeek = day === 0 ? 6 : day - 1; // Convert 0-6 (Sun-Sat) to 0-6 (Mon-Sun)
+    // Return only data up to and including today
+    return fullGraphData.slice(0, dayOfWeek + 1);
   };
+
+  const graphData = getGraphDataUpToToday();
 
   // Fetch AI Report from Groq
   useEffect(() => {
@@ -822,30 +824,104 @@ export default function Dashboard() {
     fetchCurrentModule();
   }, []);
 
-  // Generate SVG path for the graph
-  const generateGraphPath = () => {
+  // Generate colored segments for the graph (green for increase, copper for decrease)
+  const generateColoredSegments = () => {
     const padding = 50;
-    const width = 380;
+    const width = 410;
     const height = 120;
     const maxValue = 100;
 
-    const xStep = width / (graphData.length - 1);
+    // Space based on 6 intervals (7 days)
+    const xStep = width / 6;
+
     const points = graphData.map((value, i) => {
       const x = padding + i * xStep;
-      const y = 135 - (value / maxValue) * height;
-      return `${x},${y}`;
+      const y = 165 - (value / maxValue) * height;
+      return { x, y, value };
     });
 
-    return points.join(" ");
+    if (points.length < 2) return [];
+
+    const segments = [];
+
+    for (let i = 1; i < points.length; i++) {
+      const prev = points[i - 1];
+      const curr = points[i];
+      const next = points[i + 1];
+
+      // Determine color based on value change
+      const isIncreasing = curr.value >= prev.value;
+      const color = isIncreasing ? "#10b981" : "#b87333"; // green or copper
+
+      // Calculate control points for smooth curve
+      const cp1x = prev.x + (curr.x - prev.x) * 0.5;
+      const cp1y = prev.y + (curr.y - prev.y) * 0.5;
+      const cp2x = curr.x - (next ? (next.x - curr.x) * 0.5 : 0);
+      const cp2y = curr.y - (next ? (next.y - curr.y) * 0.5 : 0);
+
+      const path = `M ${prev.x},${prev.y} C ${cp1x},${cp1y} ${cp2x},${cp2y} ${curr.x},${curr.y}`;
+
+      segments.push({ path, color });
+    }
+
+    return segments;
+  };
+
+  // Generate SVG path for the graph fill area
+  const generateGraphFillPath = () => {
+    const padding = 50;
+    const width = 410;
+    const height = 120;
+    const maxValue = 100;
+
+    // Space based on 6 intervals (7 days)
+    const xStep = width / 6;
+
+    const points = graphData.map((value, i) => {
+      const x = padding + i * xStep;
+      const y = 165 - (value / maxValue) * height;
+      return { x, y };
+    });
+
+    if (points.length === 0) return "";
+    if (points.length === 1)
+      return `M ${points[0].x},${points[0].y} L ${points[0].x},165 Z`;
+
+    // Generate smooth cubic Bezier curve for top, then close area
+    let path = `M ${points[0].x},${points[0].y}`;
+
+    for (let i = 1; i < points.length; i++) {
+      const curr = points[i];
+      const prev = points[i - 1];
+      const next = points[i + 1];
+
+      // Calculate control point
+      const cp1x = prev.x + (curr.x - prev.x) * 0.5;
+      const cp1y = prev.y + (curr.y - prev.y) * 0.5;
+      const cp2x = curr.x - (next ? (next.x - curr.x) * 0.5 : 0);
+      const cp2y = curr.y - (next ? (next.y - curr.y) * 0.5 : 0);
+
+      path += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${curr.x},${curr.y}`;
+    }
+
+    // Close the area: line down to bottom, line left to start, close
+    path += ` L ${points[points.length - 1].x},165 L ${points[0].x},165 Z`;
+
+    return path;
   };
 
   return (
     <section className="py-5">
-      {/* Top Section: 2-Column Grid - SOLO LEVELING (Left) and AI Report (Right) */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 mb-4 auto-rows-max lg:auto-rows-fr">
+      {/* Top Section: 3-Column Grid - SOLO LEVELING (Left), Goal Completion (Center), AI Report (Right) */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 mb-4 auto-rows-max lg:auto-rows-fr">
         {/* Left Column - SOLO LEVELING System */}
         <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-6 pt-8">
           <SoloLevelingSystem />
+        </div>
+
+        {/* Center Column - Goal Completion */}
+        <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-6 pt-8 flex items-center justify-center">
+          <GoalCompletion />
         </div>
 
         {/* Right Column - AI Report */}
@@ -867,7 +943,7 @@ export default function Dashboard() {
               ♻️
             </button>
           </div>
-          <div className="flex flex-col lg:flex-row items-center justify-start gap-6">
+          <div className="flex flex-col items-center justify-center gap-6">
             {loadingAiReport ? (
               <div className="flex flex-col items-center justify-center gap-3 h-48">
                 <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
@@ -875,11 +951,11 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                {/* Score Ring - Left Side */}
-                <div className="relative w-48 h-48 flex-shrink-0">
+                {/* Score Ring - Center */}
+                <div className="relative w-40 h-40 flex-shrink-0">
                   <svg
-                    width="192"
-                    height="192"
+                    width="160"
+                    height="160"
                     viewBox="0 0 200 200"
                     className="drop-shadow-lg"
                   >
@@ -896,11 +972,11 @@ export default function Dashboard() {
                     <circle
                       cx="100"
                       cy="100"
-                      r="90"
+                      r="75"
                       fill="none"
                       stroke="url(#scoreGradient)"
-                      strokeWidth="14"
-                      strokeDasharray={`${(aiScore / 100) * 565.5} 565.5`}
+                      strokeWidth="12"
+                      strokeDasharray={`${(aiScore / 100) * 471.2} 471.2`}
                       strokeLinecap="round"
                       transform="rotate(-90 100 100)"
                       className="transition-all duration-500"
@@ -920,7 +996,7 @@ export default function Dashboard() {
                   </svg>
                   {/* Center Text */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-5xl font-bold text-emerald-400">
+                    <span className="text-4xl font-bold text-emerald-400">
                       {aiScore}
                     </span>
                     <span className="text-[10px] text-zinc-400 uppercase tracking-wide">
@@ -941,41 +1017,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Current Section - Full Width */}
-      <div className="mt-4 rounded-2xl border border-white/10 bg-[#111214] px-6 py-8">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          {loadingCurrentModule ? (
-            <h3 className="text-lg font-semibold text-zinc-100 text-center sm:text-left">
-              Loading...
-            </h3>
-          ) : currentModule ? (
-            <>
-              <h3 className="text-lg font-semibold text-zinc-100 text-center sm:text-left">
-                {currentModule.name}
-              </h3>
-              <button
-                onClick={() => router.push(currentModule.path)}
-                className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
-              >
-                Continue learning
-              </button>
-            </>
-          ) : (
-            <>
-              <h3 className="text-lg font-semibold text-zinc-400 text-center sm:text-left">
-                No active module. Start learning!
-              </h3>
-              <button
-                onClick={() => router.push("/collections")}
-                className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
-              >
-                Start learning
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
       {/* Progress & Calendar Section */}
       <div className="mt-4 rounded-2xl border border-white/10 bg-[#111214] px-6 py-6">
         <div className="flex flex-col lg:flex-row gap-6">
@@ -986,15 +1027,6 @@ export default function Dashboard() {
                 Progress graph
               </h2>
               <div className="flex items-center gap-3">
-                <select
-                  value={yAxisMetric}
-                  onChange={(e) => setYAxisMetric(e.target.value as any)}
-                  className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                >
-                  <option value="improvement">Improvement</option>
-                  <option value="accuracy">Accuracy</option>
-                  <option value="readiness">Readiness</option>
-                </select>
                 <button
                   onClick={() => setShowGridLines(!showGridLines)}
                   className={`px-3 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
@@ -1008,13 +1040,17 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="w-full overflow-x-auto">
+            <div className="w-full">
               <svg
                 width="100%"
-                height="220"
-                viewBox="0 0 480 180"
+                height="280"
+                viewBox="0 0 480 220"
                 preserveAspectRatio="xMidYMid meet"
-                style={{ minHeight: "220px" }}
+                style={{
+                  minHeight: "280px",
+                  display: "block",
+                  maxWidth: "100%",
+                }}
               >
                 <defs>
                   <linearGradient
@@ -1027,69 +1063,87 @@ export default function Dashboard() {
                     <stop offset="0%" stopColor="rgba(16, 185, 129, 0.3)" />
                     <stop offset="100%" stopColor="rgba(16, 185, 129, 0)" />
                   </linearGradient>
+                  <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#10b981" />
+                    <stop offset="100%" stopColor="#10b981" />
+                  </linearGradient>
+                  <filter
+                    id="glow"
+                    x="-50%"
+                    y="-50%"
+                    width="200%"
+                    height="200%"
+                  >
+                    <feGaussianBlur stdDeviation="2" result="blur" />
+                    <feMerge>
+                      <feMergeNode in="blur" />
+                      <feMergeNode in="SourceGraphic" />
+                    </feMerge>
+                  </filter>
                 </defs>
 
                 {/* Grid lines */}
                 {showGridLines && (
                   <>
                     {/* Horizontal grid lines */}
-                    {[0, 25, 50, 75, 100].map((value) => (
+                    {[0, 20, 40, 60, 80, 100].map((value) => (
                       <line
                         key={`h-grid-${value}`}
                         x1="50"
-                        y1={135 - (value / 100) * 120}
+                        y1={165 - (value / 100) * 130}
                         x2="460"
-                        y2={135 - (value / 100) * 120}
+                        y2={165 - (value / 100) * 130}
                         stroke="#10b981"
                         strokeWidth="0.5"
                         opacity="0.2"
                         strokeDasharray="2,2"
                       />
                     ))}
-                    {/* Vertical grid lines */}
-                    {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(
-                      (i) => (
+                    {/* Vertical grid lines - all 7 days */}
+                    {[0, 1, 2, 3, 4, 5, 6].map((i) => {
+                      const xPos = 50 + i * (410 / 6);
+                      return (
                         <line
                           key={`v-grid-${i}`}
-                          x1={50 + (i * 410) / 15}
-                          y1="15"
-                          x2={50 + (i * 410) / 15}
-                          y2="135"
+                          x1={xPos}
+                          y1="35"
+                          x2={xPos}
+                          y2="165"
                           stroke="#10b981"
                           strokeWidth="0.5"
                           opacity="0.2"
                           strokeDasharray="2,2"
                         />
-                      ),
-                    )}
+                      );
+                    })}
                   </>
                 )}
 
                 {/* Y-axis */}
                 <line
                   x1="50"
-                  y1="15"
+                  y1="35"
                   x2="50"
-                  y2="135"
+                  y2="165"
                   stroke="#10b981"
                   strokeWidth="1.5"
                 />
                 {/* X-axis */}
                 <line
                   x1="50"
-                  y1="135"
+                  y1="165"
                   x2="460"
-                  y2="135"
+                  y2="165"
                   stroke="#10b981"
                   strokeWidth="1.5"
                 />
 
                 {/* Y-axis labels */}
-                {[0, 25, 50, 75, 100].map((value) => (
+                {[0, 20, 40, 60, 80, 100].map((value) => (
                   <g key={`y-label-${value}`}>
                     <text
                       x="42"
-                      y={135 - (value / 100) * 120 + 4}
+                      y={165 - (value / 100) * 130 + 4}
                       textAnchor="end"
                       fontSize="9"
                       fill="#10b981"
@@ -1100,60 +1154,82 @@ export default function Dashboard() {
                   </g>
                 ))}
 
-                {/* X-axis labels (Weeks) */}
-                {[0, 1, 2, 3].map((weekIdx) => (
-                  <g key={`x-label-${weekIdx}`}>
-                    <text
-                      x={50 + weekIdx * 102.5 + 51.25}
-                      y="152"
-                      textAnchor="middle"
-                      fontSize="10"
-                      fill="#10b981"
-                      opacity="0.8"
-                    >
-                      W{weekIdx + 1}
-                    </text>
-                  </g>
-                ))}
+                {/* X-axis labels (all 7 days of week) */}
+                {(() => {
+                  const today = new Date();
+                  const day = today.getDay();
+                  const diff = today.getDate() - day + (day === 0 ? -6 : 1);
+                  const monday = new Date(
+                    today.getFullYear(),
+                    today.getMonth(),
+                    diff,
+                  );
+
+                  return [0, 1, 2, 3, 4, 5, 6].map((dayOffset) => {
+                    const date = new Date(monday);
+                    date.setDate(date.getDate() + dayOffset);
+                    const label = `${date.getDate().toString().padStart(2, "0")}/${(date.getMonth() + 1).toString().padStart(2, "0")}`;
+                    const xPos = 50 + dayOffset * (410 / 6);
+                    return (
+                      <g key={`x-label-${dayOffset}`}>
+                        <text
+                          x={xPos}
+                          y="182"
+                          textAnchor="middle"
+                          fontSize="10"
+                          fill="#10b981"
+                          opacity="0.8"
+                        >
+                          {label}
+                        </text>
+                      </g>
+                    );
+                  });
+                })()}
 
                 {/* Y-axis label */}
                 <text
                   x="20"
-                  y="75"
+                  y="100"
                   textAnchor="middle"
                   fontSize="10"
                   fill="#10b981"
                   opacity="0.7"
-                  transform="rotate(-90 20 75)"
+                  transform="rotate(-90 20 100)"
                 >
-                  {metricLabels[yAxisMetric]}
+                  Improvement
                 </text>
 
                 {/* X-axis label */}
                 <text
                   x="255"
-                  y="170"
+                  y="202"
                   textAnchor="middle"
                   fontSize="10"
                   fill="#10b981"
                   opacity="0.7"
                 >
-                  Time (Weeks)
+                  Time
                 </text>
 
-                {/* Graph line */}
-                <polyline
-                  points={generateGraphPath()}
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                {/* Graph line - Colored segments (green for increase, copper for decrease) */}
+                {generateColoredSegments().map((segment, idx) => (
+                  <path
+                    key={`segment-${idx}`}
+                    d={segment.path}
+                    fill="none"
+                    stroke={segment.color}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    filter="url(#glow)"
+                    opacity="0.9"
+                  />
+                ))}
 
                 {/* Graph area */}
-                <polygon
-                  points={`50,135 ${generateGraphPath().split(" ").slice(1).join(" ")} 460,135`}
+                <path
+                  d={generateGraphFillPath()}
                   fill="url(#progressGradient)"
                 />
               </svg>
