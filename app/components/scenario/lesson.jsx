@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import XPRewardAnimation from "./XPRewardAnimation";
 import "./lesson.css";
 
 // Convert YouTube URL to embed URL
@@ -46,6 +47,10 @@ export default function LessonView({ module, onBack, onComplete }) {
   const pauseCountRef = useRef(0);
   const sendDelayRef = useRef(null);
   const interviewEndedRef = useRef(false);
+
+  // XP Reward state
+  const [xpReward, setXpReward] = useState(null);
+  const [showXPAnimation, setShowXPAnimation] = useState(false);
 
   // Feedback state
   const [feedback, setFeedback] = useState(null);
@@ -133,7 +138,7 @@ export default function LessonView({ module, onBack, onComplete }) {
   const activeQuiz = hasQuiz ? quizQuestions[currentQuiz] : null;
   const isLastQuizQuestion = currentQuiz === quizQuestions.length - 1;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     const stepType = getStepType();
 
     if (stepType === "quiz" && !isLastQuizQuestion) {
@@ -144,14 +149,18 @@ export default function LessonView({ module, onBack, onComplete }) {
     }
 
     if (stepType === "interview") {
-      generateFeedback();
+      await generateFeedback();
       setStep(step + 1);
       return;
     }
 
     if (stepType === "feedback") {
       if (isLastLesson) {
-        onComplete?.();
+        // Award XP: 50 base + performance bonus (100% = 100 XP)
+        const performanceScore = feedback?.finalScore || 0;
+        const totalXP = 50 + performanceScore;
+        setXpReward(totalXP);
+        setShowXPAnimation(true);
       } else {
         setCurrentLesson(currentLesson + 1);
         setStep(0);
@@ -455,7 +464,7 @@ export default function LessonView({ module, onBack, onComplete }) {
     groqHistoryRef.current = [];
   };
 
-  const generateFeedback = () => {
+  const generateFeedback = async () => {
     const totalQuiz = Object.keys(quizAnswers).length;
     const correctCount = Object.values(quizAnswers).filter(
       (a) => a.correct,
@@ -684,6 +693,30 @@ export default function LessonView({ module, onBack, onComplete }) {
       overallRating,
       ratingColor,
     });
+
+    // Save report to user_ai_reports for daily XP calculation
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user && module?.id) {
+        const dailyXpEarned = 50 + finalScore; // XP formula: 50 base + score
+        await supabase.from("user_ai_reports").insert({
+          user_id: authData.user.id,
+          module_id: module.id,
+          score: finalScore,
+          daily_xp: dailyXpEarned,
+          recommendation: "Report generated successfully",
+        });
+
+        // Mark module as completed in user_module_progress
+        await supabase.from("user_module_progress").upsert({
+          user_id: authData.user.id,
+          module_id: module.id,
+          completed: true,
+        }, { onConflict: "user_id,module_id" });
+      }
+    } catch (err) {
+      console.error("Failed to save report:", err);
+    }
   };
 
   const startInterview = async () => {
@@ -753,7 +786,7 @@ export default function LessonView({ module, onBack, onComplete }) {
   return (
     <div className="lesson-container">
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/10">
         <div>
           <p className="text-xs text-gray-500 mb-0.5">
             Lesson {currentLesson + 1} of {lessons.length}
@@ -764,9 +797,9 @@ export default function LessonView({ module, onBack, onComplete }) {
         </div>
         <button
           onClick={onBack}
-          className="px-4 py-1.5 rounded-lg bg-white/8 border border-white/15 text-white text-sm font-medium hover:bg-white/12 transition"
+          className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-sm font-medium hover:bg-emerald-500/30 transition shrink-0 ml-4"
         >
-          Back to Modules
+          ← Back
         </button>
       </div>
 
@@ -802,9 +835,80 @@ export default function LessonView({ module, onBack, onComplete }) {
         {/* Explanation slide */}
         {stepType === "explanation" && (
           <div className="bg-white/3 border border-white/8 rounded-2xl p-6">
-            <h3 className="text-base font-medium text-white mb-4">
-              Explanation
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-medium text-white">
+                Explanation
+              </h3>
+              {/* DEBUG BUTTON: Simulate 100% score */}
+              <button
+                onClick={async () => {
+                  // Create perfect feedback
+                  const perfectFeedback = {
+                    quizScore: { correct: 5, total: 5, percent: 100 },
+                    finalScore: 100,
+                    interviewStats: {
+                      questionsAnswered: 3,
+                      totalQuestions: 3,
+                      avgWords: 25,
+                    },
+                    behavioralStats: {
+                      interruptions: 0,
+                      hesitations: 0,
+                      pauses: 0,
+                    },
+                    softSkills: [
+                      { label: "Communicated ideas clearly", score: 5 },
+                      { label: "Listened actively to others", score: 5 },
+                      { label: "Expressed thoughts confidently", score: 5 },
+                    ],
+                    strengths: [
+                      "Perfect quiz score!",
+                      "Spoke fluently with no noticeable filler words",
+                      "Completed all interview questions",
+                      "Detailed and thoughtful interview responses",
+                    ],
+                    improvements: [],
+                    overallRating: "Excellent",
+                    ratingColor: "emerald",
+                  };
+                  setFeedback(perfectFeedback);
+                  
+                  // Save report to user_ai_reports for daily XP calculation
+                  try {
+                    const { data: authData } = await supabase.auth.getUser();
+                    if (authData?.user && module?.id) {
+                      await supabase.from("user_ai_reports").insert({
+                        user_id: authData.user.id,
+                        module_id: module.id,
+                        score: 100,
+                        daily_xp: 150, // 50 + 100 = 150 XP
+                        recommendation: "Debug test - 100% perfect score",
+                      });
+
+                      // Mark module as completed in user_module_progress
+                      await supabase.from("user_module_progress").upsert({
+                        user_id: authData.user.id,
+                        module_id: module.id,
+                        completed: true,
+                      }, { onConflict: "user_id,module_id" });
+
+                      console.log("✅ Debug report saved successfully with 150 XP");
+                    }
+                  } catch (err) {
+                    console.error("❌ Failed to save debug report:", err);
+                  }
+                  
+                  setXpReward(150); // 50 + 100 = 150 XP
+                  setShowXPAnimation(true);
+                  // Jump to feedback step
+                  setStep(4);
+                }}
+                className="px-3 py-1 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-400 text-xs font-medium hover:bg-purple-500/30 transition"
+                title="Debug: Simulate 100% perfect score"
+              >
+                DEBUG: 100%
+              </button>
+            </div>
             <div className="text-sm text-gray-300 leading-relaxed whitespace-pre-wrap">
               {lesson?.explanation || "No explanation available."}
             </div>
@@ -1102,7 +1206,7 @@ export default function LessonView({ module, onBack, onComplete }) {
                 </button>
                 {/* End interview button */}
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     // Count as interrupt if ending early
                     // (before providing meaningful responses)
                     const userResponseCount =
@@ -1142,7 +1246,7 @@ export default function LessonView({ module, onBack, onComplete }) {
                     setIsAiSpeaking(false);
                     setIsListening(false);
                     setInterviewEnded(true);
-                    generateFeedback();
+                    await generateFeedback();
                     setStep((prev) => prev + 1);
                   }}
                   className="relative z-10 mt-6 px-5 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-gray-400 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-400 transition-all"
@@ -1409,6 +1513,105 @@ export default function LessonView({ module, onBack, onComplete }) {
               : "Next"}
         </button>
       </div>
+
+      {showXPAnimation && xpReward && (
+        <XPRewardAnimation
+          xpAmount={xpReward}
+          onDone={async () => {
+            setShowXPAnimation(false);
+            // Update user's XP in profile + dashboard chart
+            try {
+              const { data: authData } = await supabase.auth.getUser();
+              if (authData?.user) {
+                const userId = authData.user.id;
+                const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+                // --- 1. Update profiles ---
+                const { data: profileData } = await supabase
+                  .from("profiles")
+                  .select("xp, daily_xp, daily_xp_reset_date")
+                  .eq("id", userId)
+                  .maybeSingle();
+
+                const lastReset = profileData?.daily_xp_reset_date;
+                const isNewDay = !lastReset || lastReset !== today;
+                const currentXP = profileData?.xp || 0;
+                const currentDailyXP = isNewDay ? 0 : (profileData?.daily_xp || 0);
+                const newDailyXP = currentDailyXP + xpReward;
+
+                await supabase
+                  .from("profiles")
+                  .update({
+                    xp: currentXP + xpReward,
+                    daily_xp: newDailyXP,
+                    daily_xp_reset_date: today,
+                  })
+                  .eq("id", userId);
+
+                // --- 2. Update user_dashboards chart point for today ---
+                const { data: dashData } = await supabase
+                  .from("user_dashboards")
+                  .select("graph_data")
+                  .eq("user_id", userId)
+                  .maybeSingle();
+
+                const existingGraphData = dashData?.graph_data || {};
+                const existingPoints = existingGraphData.chartPoints || [];
+
+                // Build the week's Mon–Sun skeleton if not present or stale
+                const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+                const now = new Date();
+                const mondayOffset = (now.getDay() + 6) % 7;
+                const weekStart = new Date(now);
+                weekStart.setHours(0, 0, 0, 0);
+                weekStart.setDate(now.getDate() - mondayOffset);
+
+                const weekDates = Array.from({ length: 7 }, (_, i) => {
+                  const d = new Date(weekStart);
+                  d.setDate(weekStart.getDate() + i);
+                  return d.toISOString().slice(0, 10);
+                });
+
+                // If stored points don't match this week, start fresh
+                const pointsAreThisWeek =
+                  existingPoints.length === 7 &&
+                  existingPoints[0]?.date === weekDates[0];
+
+                const basePoints = pointsAreThisWeek
+                  ? existingPoints
+                  : weekDates.map((date, i) => ({
+                      date,
+                      label: weekdayLabels[i],
+                      displayDate: `${date.slice(8)}/${date.slice(5, 7)}`,
+                      score: 0,
+                    }));
+
+                // Set today's score to the new daily XP total
+                const updatedPoints = basePoints.map((pt) =>
+                  pt.date === today ? { ...pt, score: newDailyXP } : pt,
+                );
+
+                await supabase.from("user_dashboards").upsert(
+                  {
+                    user_id: userId,
+                    graph_data: {
+                      ...existingGraphData,
+                      chartPoints: updatedPoints,
+                      avgScore: newDailyXP,
+                      updatedAt: today,
+                    },
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: "user_id" },
+                );
+              }
+            } catch (err) {
+              console.warn("Failed to update XP:", err);
+            }
+            onComplete?.();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -16,7 +16,7 @@ export default function ScenarioPracticePage() {
   return (
     <div className="h-[calc(100vh-4rem)] overflow-hidden bg-[#0c0c0c] p-5">
       {practiceMode ? (
-        <div className="bg-[#141414] border border-white/8 rounded-2xl p-8 h-full overflow-hidden flex flex-col">
+        <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 h-full overflow-hidden flex flex-col">
           {activeModule ? (
             <LessonView
               module={activeModule}
@@ -87,8 +87,9 @@ export default function ScenarioPracticePage() {
           <div className="bg-[#141414] border border-white/8 rounded-2xl p-5 overflow-hidden flex flex-col">
             <Content
               selectedScenario={selectedScenario}
+              onDeselectScenario={() => setSelectedScenario(null)}
               onStartPractice={() => setPracticeMode(true)}
-              onModuleSelect={(module) => {
+              onModuleSelect={(module: any) => {
                 setPracticeMode(true);
                 setActiveModule(module);
               }}
@@ -121,6 +122,7 @@ function PracticeModules({
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
+  const [debugging, setDebugging] = useState<Set<string>>(new Set());
 
   // Get current user — always resolve even if not logged in
   useEffect(() => {
@@ -205,6 +207,22 @@ function PracticeModules({
     fetchModules();
   }, [selectedScenario, authResolved, userId]);
 
+  const debugComplete = async (module: any) => {
+    if (!userId || !supabase) return;
+    setDebugging((prev) => new Set(prev).add(module.id));
+    try {
+      await supabase.from("user_module_progress").upsert(
+        { user_id: userId, module_id: module.id, completed: true, completed_at: new Date().toISOString() },
+        { onConflict: "user_id,module_id" },
+      );
+      setCompletedIds((prev) => new Set(prev).add(module.id));
+    } catch (err) {
+      console.error("Debug complete failed:", err);
+    } finally {
+      setDebugging((prev) => { const s = new Set(prev); s.delete(module.id); return s; });
+    }
+  };
+
   if (loading) {
     return (
       <div className="text-center py-8">
@@ -212,10 +230,9 @@ function PracticeModules({
       </div>
     );
   }
-
   return (
     <div
-      className="space-y-4 max-h-[60vh] overflow-y-auto pr-2"
+      className="space-y-3 flex-1 overflow-y-auto pr-2 min-h-0"
       style={{
         scrollbarWidth: "thin",
         scrollbarColor: "rgba(52,211,153,0.25) transparent",
@@ -266,16 +283,25 @@ function PracticeModules({
                     )}
                   </div>
                 </div>
-                <button
-                  onClick={() => onLearn?.(module)}
-                  className={`px-7 py-1.5 rounded-lg border text-sm font-medium transition-all duration-200 shrink-0 mr-3 ${
-                    isComplete
-                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25"
-                      : "bg-white/8 border-white/15 text-white hover:bg-white/12 hover:border-emerald-500/40"
-                  }`}
-                >
-                  {isComplete ? "Reattempt" : "Learn"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => onLearn?.(module)}
+                    className={`px-7 py-1.5 rounded-lg border text-sm font-medium transition-all duration-200 shrink-0 mr-3 ${
+                      isComplete
+                        ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25"
+                        : "bg-white/8 border-white/15 text-white hover:bg-white/12 hover:border-emerald-500/40"
+                    }`}
+                  >
+                    {isComplete ? "Reattempt" : "Learn"}
+                  </button>
+                  <button
+                    onClick={() => debugComplete(module)}
+                    disabled={debugging.has(module.id)}
+                    className="px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-400 text-xs font-medium hover:bg-amber-500/20 transition-all duration-200 shrink-0 mr-3 disabled:opacity-50"
+                  >
+                    {debugging.has(module.id) ? "..." : "Debug"}
+                  </button>
+                </div>
               </div>
             </div>
           );

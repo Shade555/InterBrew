@@ -34,6 +34,7 @@ const ScoreBar = ({ score }) => (
 
 export default function Content({
   selectedScenario,
+  onDeselectScenario,
   onStartPractice,
   onModuleSelect,
 }) {
@@ -44,6 +45,8 @@ export default function Content({
   const [overviewStats, setOverviewStats] = useState([]);
   const [recentActivity, setRecentActivity] = useState([]);
   const [insights, setInsights] = useState([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsFetched, setInsightsFetched] = useState(false);
   const [chartData, setChartData] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -73,7 +76,8 @@ export default function Content({
           { data: scenarioData, error: scenarioError },
           { data: modulesData, error: modulesError },
           { data: progressData, error: progressError },
-          { data: aiReports, error: aiReportsError },
+          { data: profileData, error: profileError },
+          { data: dashData },
         ] = await Promise.all([
           supabase.from("scenarios").select("id, title"),
           supabase.from("modules").select("id, scenario_id"),
@@ -82,10 +86,15 @@ export default function Content({
             .select("module_id, completed")
             .eq("user_id", user.id),
           supabase
-            .from("user_ai_reports")
-            .select("score, created_at")
+            .from("profiles")
+            .select("daily_xp")
+            .eq("id", user.id)
+            .maybeSingle(),
+          supabase
+            .from("user_dashboards")
+            .select("graph_data")
             .eq("user_id", user.id)
-            .order("created_at", { ascending: true }),
+            .maybeSingle(),
         ]);
 
         if (scenarioError || modulesError || progressError) {
@@ -100,11 +109,8 @@ export default function Content({
           return;
         }
 
-        if (aiReportsError) {
-          console.warn(
-            "user_ai_reports unavailable, using progress fallback",
-            aiReportsError,
-          );
+        if (profileError) {
+          console.warn("profiles unavailable, defaulting XP to 0", profileError);
         }
 
         const completedModuleIds = new Set(
@@ -159,47 +165,8 @@ export default function Content({
           0,
         );
 
-        const reports = aiReportsError ? [] : aiReports || [];
-
-        // Get latest score for each module (in case of retries)
-        const latestScoreByModule = reports.reduce((acc, row) => {
-          const moduleId = row.module_id || row.id;
-          if (
-            !acc[moduleId] ||
-            new Date(row.created_at) > new Date(acc[moduleId].created_at)
-          ) {
-            acc[moduleId] = row;
-          }
-          return acc;
-        }, {});
-
-        const latestReports = Object.values(latestScoreByModule);
-
-        const avgScoreFromReports =
-          latestReports.length > 0
-            ? Math.round(
-                latestReports.reduce((sum, row) => sum + Number(row.score), 0) /
-                  latestReports.length,
-              )
-            : totalModulesTotal > 0
-              ? Math.round((completedModulesTotal / totalModulesTotal) * 100)
-              : 0;
-
-        const dailyReportMap = latestReports.reduce((acc, row) => {
-          const rawDate = new Date(row.created_at);
-          const score = Number(row.score);
-          if (Number.isNaN(rawDate.getTime()) || Number.isNaN(score)) {
-            return acc;
-          }
-
-          const day = getLocalDateKey(rawDate);
-          if (!acc[day]) {
-            acc[day] = { sum: 0, count: 0 };
-          }
-          acc[day].sum += score;
-          acc[day].count += 1;
-          return acc;
-        }, {});
+        // Get daily XP from profiles table
+        const todayXp = profileError ? 0 : (profileData?.daily_xp || 0);
 
         const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         const now = new Date();
@@ -208,19 +175,27 @@ export default function Content({
         weekStart.setHours(0, 0, 0, 0);
         weekStart.setDate(now.getDate() - mondayOffset);
 
-        const chartPoints = Array.from({ length: 7 }, (_, idx) => {
+        // Use stored chart points from user_dashboards if they cover this week,
+        // otherwise fall back to a fresh skeleton with today's XP filled in
+        const today = now.toISOString().slice(0, 10);
+        const weekDates = Array.from({ length: 7 }, (_, i) => {
           const d = new Date(weekStart);
-          d.setDate(weekStart.getDate() + idx);
-          const isoDate = getLocalDateKey(d);
-          const dayData = dailyReportMap[isoDate];
-
-          return {
-            date: isoDate,
-            label: weekdayLabels[idx],
-            displayDate: `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`,
-            score: dayData ? Math.round(dayData.sum / dayData.count) : 0,
-          };
+          d.setDate(weekStart.getDate() + i);
+          return d.toISOString().slice(0, 10);
         });
+
+        const storedPoints = dashData?.graph_data?.chartPoints || [];
+        const storedIsThisWeek =
+          storedPoints.length === 7 && storedPoints[0]?.date === weekDates[0];
+
+        const chartPoints = storedIsThisWeek
+          ? storedPoints
+          : weekDates.map((date, i) => ({
+              date,
+              label: weekdayLabels[i],
+              displayDate: `${date.slice(8)}/${date.slice(5, 7)}`,
+              score: date === today ? todayXp : 0,
+            }));
 
         const hoursSpent = (completedModulesTotal * 30) / 60;
 
@@ -231,8 +206,8 @@ export default function Content({
             sub: null,
           },
           {
-            label: "Avg Score",
-            value: `${avgScoreFromReports}%`,
+            label: "Daily XP",
+            value: `${todayXp}`,
             sub: null,
           },
         ];
@@ -242,14 +217,13 @@ export default function Content({
         setRecentActivity(scenariosWithProgress);
         setInsights([]);
 
-        // Save dashboard data to Supabase
+        // Save non-chart dashboard metadata (chart points are written by lesson.jsx on XP earn)
         try {
           await supabase.from("user_dashboards").upsert(
             {
               user_id: user.id,
               graph_data: {
-                chartPoints,
-                avgScore: avgScoreFromReports,
+                ...(dashData?.graph_data || {}),
                 completedModules: completedModulesTotal,
                 totalModules: totalModulesTotal,
                 hoursSpent: hoursSpent.toFixed(1),
@@ -274,12 +248,26 @@ export default function Content({
     fetchContentData();
   }, [selectedScenario?.id]);
 
+  // Fetch AI insights once when the insights tab is opened
+  useEffect(() => {
+    if (tab !== "insights" || insightsFetched || insightsLoading) return;
+    setInsightsLoading(true);
+    fetch("/api/scenario-insights")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.tips)) setInsights(data.tips);
+        setInsightsFetched(true);
+      })
+      .catch((err) => console.error("Failed to load insights:", err))
+      .finally(() => setInsightsLoading(false));
+  }, [tab, insightsFetched, insightsLoading]);
+
   return (
-    <div className="h-full flex flex-col gap-5">
+    <div className="h-full flex flex-col gap-3 min-h-0">
       {/* If a scenario is selected, show modules instead of chart */}
       {selectedScenario ? (
         <>
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between shrink-0">
             <div>
               <h1 className="text-xl font-semibold text-white">
                 {selectedScenario.title}
@@ -288,12 +276,20 @@ export default function Content({
                 {selectedScenario.description}
               </p>
             </div>
+            <button
+              onClick={onDeselectScenario}
+              className="px-4 py-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-sm font-medium hover:bg-emerald-500/30 transition shrink-0"
+            >
+              ← Back to Graph
+            </button>
           </div>
           {/* Modules list for selected scenario */}
-          <Modules
-            selectedScenario={selectedScenario}
-            onSelect={onModuleSelect}
-          />
+          <div className="flex-1 min-h-0">
+            <Modules
+              selectedScenario={selectedScenario}
+              onSelect={onModuleSelect}
+            />
+          </div>
         </>
       ) : (
         <>
@@ -344,10 +340,12 @@ export default function Content({
                     color: "text-white",
                   },
                   {
-                    label: "Avg Score",
+                    label: "Daily XP",
                     value:
                       overviewStats.find(
                         (s) =>
+                          s.label?.toLowerCase().includes("xp") ||
+                          s.label?.toLowerCase().includes("daily") ||
                           s.label?.toLowerCase().includes("avg") ||
                           s.label?.toLowerCase().includes("score"),
                       )?.value ??
@@ -360,6 +358,8 @@ export default function Content({
                     sub:
                       overviewStats.find(
                         (s) =>
+                          s.label?.toLowerCase().includes("xp") ||
+                          s.label?.toLowerCase().includes("daily") ||
                           s.label?.toLowerCase().includes("avg") ||
                           s.label?.toLowerCase().includes("score"),
                       )?.sub ?? null,
@@ -441,8 +441,19 @@ export default function Content({
 
                     const scores = data.map((d) => d.score);
                     const xStep = data.length > 0 ? plotW / data.length : 0;
+
+                    // Dynamic y-axis: round max up to a nice ceiling
+                    const maxScore = Math.max(...scores, 1);
+                    const rawCeil = maxScore * 1.15; // 15% headroom
+                    const magnitude = Math.pow(10, Math.floor(Math.log10(rawCeil)));
+                    const niceStep = [1, 2, 2.5, 5, 10].map((f) => f * magnitude).find((s) => s >= rawCeil / 4) || magnitude * 10;
+                    const yMax = Math.ceil(rawCeil / niceStep) * niceStep;
+                    const numTicks = 4;
+                    const tickStep = yMax / numTicks;
+                    const yTicks = Array.from({ length: numTicks + 1 }, (_, i) => Math.round(i * tickStep));
+
                     const yScale = (v) =>
-                      margin.top + ((100 - v) / 100) * plotH;
+                      margin.top + ((yMax - v) / yMax) * plotH;
 
                     // Origin point at O (left margin, bottom)
                     const originX = margin.left;
@@ -453,7 +464,6 @@ export default function Content({
                     );
                     const ys = data.map((d) => yScale(d.score));
 
-                    const yTicks = [0, 25, 50, 75, 100];
                     const xTickIndices = data.map((_, idx) => idx);
                     const todayIso = getLocalDateKey(now);
                     const todayIdx = data.findIndex(
@@ -571,10 +581,10 @@ export default function Content({
                             </filter>
                           </defs>
 
-                          {yTicks.map((tick) => {
+                          {yTicks.map((tick, i) => {
                             const y = yScale(tick);
                             return (
-                              <g key={tick}>
+                              <g key={i}>
                                 <line
                                   x1={margin.left}
                                   y1={y}
@@ -708,7 +718,7 @@ export default function Content({
                           </div>
                         )}
 
-                        <div className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] text-gray-500">
+                        <div className="pointer-events-none absolute -left-5.5 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] text-gray-500">
                           Average Score
                         </div>
                         <div className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-gray-500">
@@ -791,9 +801,9 @@ export default function Content({
                 AI Insights
               </h3>
               <div className="content-scroll flex flex-col gap-3 overflow-y-auto flex-1 pr-1">
-                {loading ? (
+                {insightsLoading ? (
                   <p className="text-xs text-gray-500 text-center mt-4">
-                    Loading insights...
+                    Generating tips...
                   </p>
                 ) : insights.length === 0 ? (
                   <p className="text-xs text-gray-500 text-center mt-4">

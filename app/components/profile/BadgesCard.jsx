@@ -28,6 +28,7 @@ export default function BadgesCard() {
         let currentBadges = Array.isArray(profileRes.data?.badges) ? profileRes.data.badges : [];
 
         const hasStreakBadge = currentBadges.some((b) => b.badge_name === "First Streak");
+        const hasConsistencyBadge = currentBadges.some((b) => b.badge_name === "Consistency");
 
         if (streak >= 1 && !hasStreakBadge) {
           // Award the badge
@@ -42,6 +43,22 @@ export default function BadgesCard() {
         } else if (streak < 1 && hasStreakBadge) {
           // Remove the badge if streak dropped to 0
           currentBadges = currentBadges.filter((b) => b.badge_name !== "First Streak");
+          await supabase.from("profiles").update({ badges: currentBadges }).eq("id", userId);
+        }
+
+        if (streak >= 15 && !hasConsistencyBadge) {
+          // Award the consistency badge
+          const consistencyBadge = {
+            id: `streak-consistency-${userId}`,
+            badge_name: "Consistency",
+            badge_icon: "/images/Consistency.png",
+            unlocked_at: new Date().toISOString(),
+          };
+          currentBadges = [...currentBadges, consistencyBadge];
+          await supabase.from("profiles").update({ badges: currentBadges }).eq("id", userId);
+        } else if (streak < 15 && hasConsistencyBadge) {
+          // Revoke if streak drops below 15
+          currentBadges = currentBadges.filter((b) => b.badge_name !== "Consistency");
           await supabase.from("profiles").update({ badges: currentBadges }).eq("id", userId);
         }
 
@@ -68,6 +85,7 @@ export default function BadgesCard() {
     if (name.includes("bronze") || name.includes("medal")) return <Medal className="w-6 h-6 text-blue-400" />;
     if (name.includes("star")) return <Star className="w-6 h-6 text-pink-400" />;
     if (name.includes("first") || name.includes("beginner")) return <Award className="w-6 h-6 text-orange-400" />;
+    if (name.includes("consistency")) return <Sparkles className="w-6 h-6 text-emerald-400" />;
     if (name.includes("expert") || name.includes("master")) return <Zap className="w-6 h-6 text-yellow-400" />;
     const fallbacks = [
       <Crown key="crown" className="w-6 h-6 text-yellow-400" />,

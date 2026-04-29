@@ -146,12 +146,12 @@ export default function PersonalInfo() {
           trend={userData?.interviews_taken > 0 ? "+" : ""}
         />
         <StatCard
-          icon={<CheckCircle size={20} />}
-          iconBg="bg-blue-500/20"
-          iconColor="text-blue-400"
-          label="Completed"
-          value={userData?.completed || 0}
-          trend={userData?.completed > 0 ? "+" : ""}
+          icon={<Zap size={20} />}
+          iconBg="bg-emerald-500/20"
+          iconColor="text-emerald-400"
+          label="XP"
+          value={userData?.xp || 0}
+          trend={userData?.xp > 0 ? "+" : ""}
         />
         <StatCard
           icon={<TrendingUp size={20} />}
