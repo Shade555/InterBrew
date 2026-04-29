@@ -155,7 +155,7 @@ export default function ProtocolFall() {
     <div className="min-h-screen bg-[#050505] text-white font-mono p-4 overflow-hidden select-none">
       <div
         ref={gameAreaRef}
-        className="max-w-6xl mx-auto h-[90vh] border border-white/10 rounded-[2rem] relative bg-[#080808] overflow-hidden flex flex-col md:flex-row shadow-[0_0_50px_rgba(0,0,0,1)]"
+        className="max-w-6xl mx-auto h-[90vh] border border-white/10 rounded-4xl relative bg-[#080808] overflow-hidden flex flex-col md:flex-row shadow-[0_0_50px_rgba(0,0,0,1)]"
       >
         <div className="w-full md:w-80 border-r border-white/10 p-6 flex flex-col bg-black/40 z-20">
           <div className="mb-6">
@@ -218,7 +218,7 @@ export default function ProtocolFall() {
             setBarPos(Math.max(5, Math.min(95, x)));
           }}
         >
-          <div className="absolute inset-0 pointer-events-none opacity-10 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px]" />
+          <div className="absolute inset-0 pointer-events-none opacity-10 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%)] bg-size-[100%_4px]" />
 
           <div className="absolute top-6 left-8 z-20">
             <p className="text-[8px] text-gray-600 font-black uppercase mb-1">

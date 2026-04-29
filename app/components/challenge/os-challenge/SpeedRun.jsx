@@ -136,7 +136,7 @@ export default function SpeedRun() {
       </div>
 
       {/* Main Terminal */}
-      <div className={`relative min-h-[400px] bg-[#0c0d0e] border-2 rounded-[2.5rem] p-10 shadow-2xl transition-all duration-500 ${
+      <div className={`relative min-h-100 bg-[#0c0d0e] border-2 rounded-[2.5rem] p-10 shadow-2xl transition-all duration-500 ${
         isFinished ? "border-emerald-500/20" : feedback === "success" ? "border-emerald-500/50 shadow-emerald-500/5" : "border-white/5"
       }`}>
         {!isFinished ? (
@@ -181,11 +181,11 @@ export default function SpeedRun() {
             <p className="text-zinc-500 font-sans mt-2 mb-10">Kernel stats have been encrypted and uploaded to the cloud.</p>
             
             <div className="flex gap-6 mb-12">
-              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl min-w-[140px]">
+              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl min-w-35">
                 <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 font-mono">Net XP</p>
                 <p className="text-4xl font-bold text-yellow-500">+{finalXP}</p>
               </div>
-              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl min-w-[140px]">
+              <div className="bg-white/5 border border-white/10 p-6 rounded-3xl min-w-35">
                 <p className="text-[10px] text-zinc-500 uppercase tracking-widest mb-1 font-mono">Sync Rate</p>
                 <p className="text-4xl font-bold text-emerald-400">
                   {Math.round((Object.values(answers).filter(a => a.isCorrect).length / tasks.length) * 100)}%

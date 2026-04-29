@@ -181,7 +181,7 @@ export default function BadgesCard() {
           {badges.map((badge, index) => (
             <div
               key={badge.id}
-              className={`bg-gradient-to-br ${getBadgeColor(badge.badge_name, index)} rounded-xl p-4 border transition-all hover:scale-105 hover:shadow-lg hover:shadow-purple-500/20`}
+              className={`bg-linear-to-br ${getBadgeColor(badge.badge_name, index)} rounded-xl p-4 border transition-all hover:scale-105 hover:shadow-lg hover:shadow-purple-500/20`}
             >
               <div className="flex flex-col items-center text-center gap-2">
                 <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center">

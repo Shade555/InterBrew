@@ -122,7 +122,7 @@ export default function ProfileHeader() {
       <div className="flex items-center gap-5">
         {/* Avatar Section */}
         <div className="relative group">
-          <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br ${avatarGradient} flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-emerald-500/30 overflow-hidden`}>
+          <div className={`w-20 h-20 rounded-2xl bg-linear-to-br ${avatarGradient} flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-emerald-500/30 overflow-hidden`}>
             {profile?.avatar_url ? (
               <img 
                 src={profile.avatar_url} 

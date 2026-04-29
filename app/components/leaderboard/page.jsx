@@ -163,14 +163,14 @@ export default function Leaderboard() {
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
             {/* Podium (Only for All-Time/Top scores) */}
             {leaderboard.length >= 3 && (
-              <div className="flex justify-center items-end gap-4 p-8 bg-gradient-to-b from-emerald-500/10 to-transparent border-b border-white/5">
+              <div className="flex justify-center items-end gap-4 p-8 bg-linear-to-b from-emerald-500/10 to-transparent border-b border-white/5">
                 {[leaderboard[1], leaderboard[0], leaderboard[2]].map((user, i) => (
                   <div key={user.id} className={`text-center ${i === 1 ? "-mt-6" : ""}`}>
                     <div className={`mx-auto mb-3 rounded-full border-2 flex items-center justify-center font-black bg-black/40
                       ${i === 1 ? "w-20 h-20 text-3xl border-yellow-500 text-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]" : "w-16 h-16 text-xl border-gray-500 text-gray-400"}`}>
                       {i === 1 ? "1" : i === 0 ? "2" : "3"}
                     </div>
-                    <p className="text-white font-bold text-sm truncate max-w-[120px]">{user.user_name}</p>
+                    <p className="text-white font-bold text-sm truncate max-w-30">{user.user_name}</p>
                     <p className="text-emerald-400 font-mono font-bold text-lg">{user.score.toLocaleString()}</p>
                   </div>
                 ))}
