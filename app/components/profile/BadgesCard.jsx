@@ -33,7 +33,7 @@ export default function BadgesCard() {
         if (streak >= 1 && !hasStreakBadge) {
           // Award the badge
           const streakBadge = {
-            id: `streak-first-${userId}`,
+            id: `streak_first_${userId}`,
             badge_name: "First Streak",
             badge_icon: "/TopPanel/fire.png",
             unlocked_at: new Date().toISOString(),
@@ -49,7 +49,7 @@ export default function BadgesCard() {
         if (streak >= 15 && !hasConsistencyBadge) {
           // Award the consistency badge
           const consistencyBadge = {
-            id: `streak-consistency-${userId}`,
+            id: `streak_consistency_${userId}`,
             badge_name: "Consistency",
             badge_icon: "/images/Consistency.png",
             unlocked_at: new Date().toISOString(),
