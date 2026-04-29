@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { DndContext, useDraggable, useDroppable, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { supabase } from "@/lib/supabaseClient";
+import Link from 'next/link';
 
 // --- Sub-Components ---
 function DraggableProcess({ process }) {
@@ -51,16 +52,53 @@ export default function MemoryAllocationChallenge() {
   const [processes, setProcesses] = useState([]);
   const [score, setScore] = useState(0);
   const [status, setStatus] = useState("SYSTEM_READY");
-  const [gameState, setGameState] = useState("playing"); // playing | finished | summary
+  const [gameState, setGameState] = useState("playing"); 
   const [showSolution, setShowSolution] = useState(false);
   const [history, setHistory] = useState([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // --- LEADERBOARD SYNC ---
+  const finalizeAndSync = async (finalScore) => {
+    setIsSyncing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setGameState("summary");
+        return;
+      }
+      const month = new Date().getMonth() + 1;
+      const year = new Date().getFullYear();
+
+      const { data: existing } = await supabase.from("leaderboard").select("id, xp").eq("user_id", user.id).eq("month", month).eq("year", year).maybeSingle();
+
+      if (existing) {
+        await supabase.from("leaderboard").update({ 
+          xp: (existing.xp || 0) + finalScore,
+          recorded_at: new Date().toISOString()
+        }).eq("id", existing.id);
+      } else {
+        await supabase.from("leaderboard").insert([{ user_id: user.id, xp: finalScore, month, year, challenges_completed: 1 }]);
+      }
+    } catch (err) {
+      console.error("Sync error:", err);
+    } finally {
+      setIsSyncing(false);
+      setGameState("summary");
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
+      setLoading(true);
       const { data } = await supabase.from('challenges_memory_scenarios').select('*').order('created_at', { ascending: true });
-      if (data) { setScenarios(data); loadLevel(data[0]); }
+      if (data) { 
+        setScenarios(data); 
+        loadLevel(data[0]); 
+      }
+      setLoading(false);
     };
     init();
   }, []);
@@ -73,7 +111,6 @@ export default function MemoryAllocationChallenge() {
     setStatus(`TASK: Allocate using ${level.strategy_type}.`);
   };
 
-  // Helper to find the correct block for a process based on strategy
   const findCorrectBlock = (process, currentBlocks) => {
     const available = currentBlocks.filter(b => !b.occupied && b.size >= process.size);
     const strat = scenarios[currentIndex].strategy_type;
@@ -99,11 +136,12 @@ export default function MemoryAllocationChallenge() {
     if (targetBlock.id === correctBlock?.id) {
       setScore(prev => prev + 100);
       setBlocks(prev => prev.map(b => b.id === targetBlock.id ? { ...b, occupied: process } : b));
-      setProcesses(prev => prev.filter(p => p.id !== process.id));
+      const remaining = processes.filter(p => p.id !== process.id);
+      setProcesses(remaining);
       setStatus("✓ VALID_ALLOCATION: Point rewarded.");
-      if (processes.length === 1) setGameState("finished");
+      if (remaining.length === 0) setGameState("finished");
     } else {
-      setScore(prev => Math.max(0, prev - 25)); // Deduct 25 for mistake
+      setScore(prev => Math.max(0, prev - 25)); 
       setStatus("⚠ LOGIC_ERROR: Points deducted. Try a different block.");
     }
   };
@@ -121,18 +159,16 @@ export default function MemoryAllocationChallenge() {
       setCurrentIndex(next);
       loadLevel(scenarios[next]);
     } else {
-      setGameState("summary");
+      finalizeAndSync(score);
     }
   };
 
   const revealSolution = () => {
-    // Deduct heavy points for skipping/revealing
     setScore(prev => Math.max(0, prev - 100));
     setShowSolution(true);
     setGameState("finished");
     setStatus("REVEALING_SOLUTION: Sequence forced to complete.");
     
-    // Auto-fill blocks with correct solution
     let tempBlocks = [...blocks];
     processes.forEach(p => {
       const correct = findCorrectBlock(p, tempBlocks);
@@ -144,27 +180,35 @@ export default function MemoryAllocationChallenge() {
     setProcesses([]);
   };
 
+  if (loading || isSyncing) return (
+    <div className="min-h-screen bg-black flex items-center justify-center font-mono">
+      <p className="text-emerald-500 animate-pulse uppercase tracking-[0.5em] text-[10px]">
+        {isSyncing ? "Syncing_Leaderboard..." : "Initializing_Memory_Module..."}
+      </p>
+    </div>
+  );
+
   if (gameState === "summary") {
     return (
       <div className="min-h-screen bg-[#0a0a0a] p-10 font-mono text-white flex items-center justify-center">
-        <div className="max-w-xl w-full border border-white/10 p-8 rounded-3xl bg-white/5">
-          <h2 className="text-2xl font-black text-emerald-400 mb-6 text-center underline underline-offset-8">FINAL_REPORT</h2>
-          <div className="space-y-4 mb-8">
+        <div className="max-w-xl w-full border border-white/10 p-12 rounded-[3rem] bg-white/5 text-center">
+          <h2 className="text-2xl font-black text-emerald-400 mb-6 underline underline-offset-8 uppercase italic">Final_Report</h2>
+          <div className="space-y-4 mb-8 text-left">
             {history.map((h, i) => (
-              <div key={i} className="flex justify-between items-center bg-white/5 p-4 rounded-xl">
+              <div key={i} className="flex justify-between items-center bg-white/5 p-4 rounded-xl border border-white/5">
                 <div>
-                  <p className="text-xs text-gray-500 uppercase">{h.strat}</p>
-                  <p className={h.skipped ? "text-red-400" : "text-emerald-400"}>{h.name}</p>
+                  <p className="text-[10px] text-gray-500 uppercase">{h.strat}</p>
+                  <p className={h.skipped ? "text-red-400 font-bold" : "text-emerald-400 font-bold"}>{h.name}</p>
                 </div>
-                <div className="text-right font-black">{h.score} XP</div>
+                <div className="text-right font-black">+{h.score} XP</div>
               </div>
             ))}
           </div>
-          <div className="text-center p-6 bg-emerald-500 text-black rounded-2xl mb-8">
-             <p className="text-[10px] font-bold uppercase opacity-60">Total_Rank_Score</p>
-             <p className="text-5xl font-black">{score}</p>
+          <div className="text-center p-8 bg-emerald-500 text-black rounded-[2rem] mb-10 shadow-2xl">
+             <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-2">Total_Rank_Score</p>
+             <p className="text-6xl font-black tracking-tighter">{score}</p>
           </div>
-          <button onClick={() => window.location.href='/leaderboard'} className="w-full py-4 bg-white/10 hover:bg-white/20 rounded-xl transition-all font-bold">RETURN_TO_BASE</button>
+          <Link href="/challenges" className="block w-full py-5 bg-white/10 hover:bg-white text-white hover:text-black rounded-2xl transition-all font-black uppercase tracking-widest text-xs">Return_To_Base</Link>
         </div>
       </div>
     );
@@ -180,24 +224,25 @@ export default function MemoryAllocationChallenge() {
               <p className="text-[10px] text-gray-500 mb-6 italic">{scenarios[currentIndex]?.strategy_type} Logic Active</p>
               
               <div className="mb-10">
-                <p className="text-[10px] text-gray-600 uppercase">Integrity_Score</p>
-                <p className="text-5xl font-black">{score}</p>
+                <p className="text-[10px] text-gray-600 uppercase font-black mb-1">Integrity_Score</p>
+                <p className="text-5xl font-black tabular-nums">{score}</p>
               </div>
 
               {gameState === "playing" ? (
                 <div className="space-y-2 mb-6">
                   {processes.map(p => <DraggableProcess key={p.id} process={p} />)}
+                  {processes.length === 0 && <p className="text-gray-600 text-[10px] uppercase font-bold animate-pulse">Processing_Allocation...</p>}
                 </div>
               ) : (
-                <button onClick={handleLevelTransition} className="w-full py-5 bg-emerald-500 text-black font-black rounded-xl mb-4 animate-pulse">PROCEED_TO_NEXT_MODULE</button>
+                <button onClick={handleLevelTransition} className="w-full py-5 bg-emerald-500 text-black font-black rounded-xl mb-4 animate-pulse uppercase tracking-widest text-xs">PROCEED_TO_NEXT_MODULE</button>
               )}
 
-              <div className={`p-4 rounded-xl border text-[10px] uppercase mb-4 ${status.includes('⚠') ? 'border-red-500/30 text-red-400 bg-red-500/5' : 'border-emerald-500/30 text-emerald-400'}`}>
+              <div className={`p-4 rounded-xl border text-[10px] uppercase mb-4 font-black ${status.includes('⚠') ? 'border-red-500/30 text-red-400 bg-red-500/5' : 'border-emerald-500/30 text-emerald-400'}`}>
                 {status}
               </div>
 
               {gameState === "playing" && (
-                <button onClick={revealSolution} className="w-full text-[10px] text-gray-600 hover:text-white uppercase tracking-widest transition-colors border border-white/5 py-2 rounded-lg">
+                <button onClick={revealSolution} className="w-full text-[10px] text-gray-600 hover:text-white uppercase tracking-widest transition-colors border border-white/5 py-3 rounded-lg font-black italic">
                   [ Unable to solve? Reveal correct solution (-100XP) ]
                 </button>
               )}
@@ -206,8 +251,8 @@ export default function MemoryAllocationChallenge() {
 
           <div className="col-span-8">
             <div className="flex items-center justify-between mb-6">
-                <h3 className="text-xs uppercase text-gray-500 tracking-widest">Physical_Addresses</h3>
-                {showSolution && <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-3 py-1 rounded-full animate-pulse">SOLUTION_MODE_ACTIVE</span>}
+                <h3 className="text-[10px] uppercase text-gray-500 tracking-widest font-black">Physical_Addresses</h3>
+                {showSolution && <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-3 py-1 rounded-full animate-pulse font-black">SOLUTION_MODE_ACTIVE</span>}
             </div>
             {blocks.map(b => (
               <DroppableBlock key={b.id} block={b} occupiedBy={b.occupied} isSolution={showSolution} />
