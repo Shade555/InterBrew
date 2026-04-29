@@ -8,48 +8,71 @@ import Content from "../../components/scenario/content";
 import Modules from "../../components/scenario/modules";
 import LessonView from "../../components/scenario/lesson";
 
+const scenarioStyles = `
+  @keyframes scFadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes scSlideLeft {
+    from { opacity: 0; transform: translateX(24px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes scSlideRight {
+    from { opacity: 0; transform: translateX(-24px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes scScaleIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .sc-fade-up    { animation: scFadeUp   0.42s cubic-bezier(0.22,1,0.36,1) both; }
+  .sc-fade-in    { animation: scFadeIn   0.35s ease both; }
+  .sc-slide-left { animation: scSlideLeft  0.4s cubic-bezier(0.22,1,0.36,1) both; }
+  .sc-slide-right{ animation: scSlideRight 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+  .sc-scale-in   { animation: scScaleIn  0.38s cubic-bezier(0.22,1,0.36,1) both; }
+  .sc-d1 { animation-delay: 0.04s; }
+  .sc-d2 { animation-delay: 0.10s; }
+  .sc-d3 { animation-delay: 0.17s; }
+  .sc-d4 { animation-delay: 0.24s; }
+  .sc-module-row { animation: scFadeUp 0.36s cubic-bezier(0.22,1,0.36,1) both; }
+`;
+
 export default function ScenarioPracticePage() {
   const [selectedScenario, setSelectedScenario] = useState<any>(null);
   const [practiceMode, setPracticeMode] = useState(false);
   const [activeModule, setActiveModule] = useState<any>(null);
+  const [practiceKey, setPracticeKey] = useState(0);
+  const [overviewKey, setOverviewKey] = useState(0);
+
+  const enterPractice = () => { setPracticeMode(true); setPracticeKey(k => k + 1); };
+  const exitPractice  = () => { setPracticeMode(false); setOverviewKey(k => k + 1); };
 
   return (
     <div className="h-[calc(100vh-4rem)] overflow-hidden bg-[#0c0c0c] p-5">
+      <style>{scenarioStyles}</style>
       {practiceMode ? (
-        <div className="bg-[#141414] border border-white/8 rounded-2xl p-4 h-full overflow-hidden flex flex-col">
+        <div key={practiceKey} className="sc-scale-in bg-[#141414] border border-white/8 rounded-2xl p-4 h-full overflow-hidden flex flex-col">
           {activeModule ? (
             <LessonView
               module={activeModule}
               onBack={() => setActiveModule(null)}
               onComplete={async () => {
-                // Mark module as completed in DB only if logged in
                 if (supabase) {
                   try {
-                    const {
-                      data: { user },
-                    } = await supabase.auth.getUser();
+                    const { data: { user } } = await supabase.auth.getUser();
                     if (user) {
                       await supabase.from("user_module_progress").upsert(
-                        {
-                          user_id: user.id,
-                          module_id: activeModule.id,
-                          completed: true,
-                          completed_at: new Date().toISOString(),
-                        },
+                        { user_id: user.id, module_id: activeModule.id, completed: true, completed_at: new Date().toISOString() },
                         { onConflict: "user_id,module_id" },
                       );
-                      // increment daily streak once per day when a module is completed
-                      try {
-                        await tryIncrementStreak();
-                      } catch (e) {
-                        /* ignore */
-                      }
+                      try { await tryIncrementStreak(); } catch (e) { /* ignore */ }
                     }
                   } catch (err) {
-                    console.warn(
-                      "Could not save progress (not logged in):",
-                      err,
-                    );
+                    console.warn("Could not save progress (not logged in):", err);
                   }
                 }
                 setActiveModule(null);
@@ -57,19 +80,18 @@ export default function ScenarioPracticePage() {
             />
           ) : (
             <>
-              <div className="flex items-center justify-between mb-6">
+              <div className="sc-fade-up flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-xl font-semibold text-white">
                     Practice: {selectedScenario?.title || "Modules"}
                   </h2>
                   <p className="text-sm text-gray-500 mt-1">
-                    {selectedScenario?.description ||
-                      "Select a module to begin practice"}
+                    {selectedScenario?.description || "Select a module to begin practice"}
                   </p>
                 </div>
                 <button
                   className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-medium hover:bg-white/15 transition mr-4"
-                  onClick={() => setPracticeMode(false)}
+                  onClick={exitPractice}
                 >
                   Back to Overview
                 </button>
@@ -82,22 +104,23 @@ export default function ScenarioPracticePage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-[1fr_420px] gap-4 h-full">
+        <div key={overviewKey} className="grid grid-cols-[1fr_420px] gap-4 h-full">
           {/* Center — Content */}
-          <div className="bg-[#141414] border border-white/8 rounded-2xl p-5 overflow-hidden flex flex-col">
+          <div className="sc-slide-right sc-d1 bg-[#141414] border border-white/8 rounded-2xl p-5 overflow-hidden flex flex-col">
             <Content
               selectedScenario={selectedScenario}
               onDeselectScenario={() => setSelectedScenario(null)}
-              onStartPractice={() => setPracticeMode(true)}
+              onStartPractice={enterPractice}
               onModuleSelect={(module: any) => {
                 setPracticeMode(true);
+                setPracticeKey(k => k + 1);
                 setActiveModule(module);
               }}
             />
           </div>
 
           {/* Right — Scenarios */}
-          <div className="bg-[#141414] border border-white/8 rounded-2xl p-5 overflow-hidden flex flex-col">
+          <div className="sc-slide-left sc-d2 bg-[#141414] border border-white/8 rounded-2xl p-5 overflow-hidden flex flex-col">
             <Scenarios
               onSelect={setSelectedScenario}
               selected={selectedScenario}
@@ -241,12 +264,13 @@ function PracticeModules({
       {modules.length === 0 ? (
         <p className="text-gray-500 text-center py-8">No modules available.</p>
       ) : (
-        modules.map((module) => {
+        modules.map((module, mIdx) => {
           const isComplete = completedIds.has(module.id);
           return (
             <div
               key={module.id}
-              className="bg-white/3 border border-white/8 rounded-xl p-4 hover:border-emerald-500/30 transition-colors duration-200 cursor-pointer"
+              className="sc-module-row bg-white/3 border border-white/8 rounded-xl p-4 hover:border-emerald-500/30 transition-colors duration-200 cursor-pointer"
+              style={{ animationDelay: `${0.05 + mIdx * 0.055}s` }}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">

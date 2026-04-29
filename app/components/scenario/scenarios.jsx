@@ -191,13 +191,14 @@ export default function Scenarios({ onSelect, selected }) {
             No scenarios found.
           </p>
         ) : (
-          visible.map((scenario) => (
+          visible.map((scenario, sIdx) => (
             <button
               key={scenario.id}
               onClick={() => onSelect?.(scenario)}
               onDoubleClick={() =>
                 selected?.id === scenario.id && onSelect?.(null)
               }
+              style={{ animation: `scFadeUp 0.38s cubic-bezier(0.22,1,0.36,1) ${0.04 + sIdx * 0.05}s both` }}
               className={`w-full text-left p-3.5 rounded-xl border transition-all duration-200 ${
                 selected?.id === scenario.id
                   ? "bg-white/8 border-white/20"

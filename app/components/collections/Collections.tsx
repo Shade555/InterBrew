@@ -1588,8 +1588,31 @@ export default function Collections({
 
   return (
     <section className={`${className} py-5`}>
+      <style>{`
+        @keyframes colFadeUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes colFadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes colScaleIn {
+          from { opacity: 0; transform: scale(0.97); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        .col-fade-up  { animation: colFadeUp  0.42s cubic-bezier(0.22,1,0.36,1) both; }
+        .col-fade-in  { animation: colFadeIn  0.35s ease both; }
+        .col-scale-in { animation: colScaleIn 0.38s cubic-bezier(0.22,1,0.36,1) both; }
+        .col-d1 { animation-delay: 0.04s; }
+        .col-d2 { animation-delay: 0.10s; }
+        .col-d3 { animation-delay: 0.17s; }
+        .col-d4 { animation-delay: 0.24s; }
+        .col-d5 { animation-delay: 0.31s; }
+        .col-section-row { animation: colFadeUp 0.38s cubic-bezier(0.22,1,0.36,1) both; }
+      `}</style>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-10">
-        <div className="lg:col-span-7">
+        <div className="col-fade-up col-d1 lg:col-span-7">
           <div className="mb-5 mt-2 space-y-4">
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-3 md:grid-cols-12 md:items-center">
@@ -1742,7 +1765,7 @@ export default function Collections({
           </div>
 
           <div className="space-y-4">
-            {visibleSectionList.map((section) => {
+            {visibleSectionList.map((section, sIdx) => {
               const sectionItems = filteredItems.filter(
                 (it) =>
                   (section.id && it.sectionId && it.sectionId === section.id) ||
@@ -1761,7 +1784,8 @@ export default function Collections({
               return (
                 <div
                   key={section.id}
-                  className="rounded-2xl border border-white/10 bg-[#111214] overflow-hidden"
+                  className="col-section-row rounded-2xl border border-white/10 bg-[#111214] overflow-hidden"
+                  style={{ animationDelay: `${0.08 + sIdx * 0.06}s` }}
                 >
                   <button
                     type="button"
@@ -2033,8 +2057,8 @@ export default function Collections({
           )}
         </div>
 
-        <aside className="lg:col-span-3 rounded-2xl border border-white/10 bg-[#111214] p-4 min-h-95">
-          <div className="mb-4 rounded-xl border border-white/10 bg-[#1a1c1f] p-4">
+        <aside className="col-fade-up col-d2 lg:col-span-3 rounded-2xl border border-white/10 bg-[#111214] p-4 min-h-95">
+          <div className="col-scale-in col-d3 mb-4 rounded-xl border border-white/10 bg-[#1a1c1f] p-4">
             <div className="flex items-center gap-3.5">
               <img
                 src="/TopPanel/profile.png"
@@ -2058,7 +2082,7 @@ export default function Collections({
             </button>
           </div>
 
-          <div className="rounded-xl border border-white/8 bg-zinc-800/35 p-2.5">
+          <div className="col-scale-in col-d4 rounded-xl border border-white/8 bg-zinc-800/35 p-2.5">
             <div className="grid grid-cols-5 gap-1.5 items-stretch">
               <div className="col-span-3 relative h-40 w-full">
                 <svg viewBox="0 0 240 240" className="h-full w-full -rotate-90">
@@ -2178,7 +2202,7 @@ export default function Collections({
             </div>
           </div>
 
-          <div className="mt-4">
+          <div className="col-scale-in col-d5 mt-4">
             <div className="grid grid-cols-3 gap-2">
               {courseBadges.map((badge) => (
                 <div
