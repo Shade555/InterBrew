@@ -22,20 +22,20 @@ export default function Leaderboard() {
         setLoading(true);
         if (!supabase) return;
 
-        // STEP 1: Fetch raw leaderboard data
+        // 1. Fetch raw data - include 'id' (PK) to ensure unique React keys
         let lbQuery = supabase
           .from("leaderboard")
-          .select("user_id, total_score, challenges_completed, accuracy, month, year")
-          .order("total_score", { ascending: false });
+          .select("id, user_id, xp, total_score, challenges_completed, accuracy, month, year, streaks")
+          .order("xp", { ascending: false });
 
         if (selectedMonth !== "All") lbQuery = lbQuery.eq("month", parseInt(selectedMonth));
-        if (selectedYear) lbQuery = lbQuery.eq("year", parseInt(selectedYear));
+        if (selectedYear !== "All") lbQuery = lbQuery.eq("year", parseInt(selectedYear));
 
         const { data: lbData, error: lbError } = await lbQuery;
         if (lbError) throw lbError;
 
         if (lbData && lbData.length > 0) {
-          // STEP 2: Fetch profiles for these specific users to avoid join errors
+          // 2. Fetch profiles for display names
           const userIds = lbData.map(entry => entry.user_id);
           const { data: profData, error: profError } = await supabase
             .from("profiles")
@@ -44,17 +44,17 @@ export default function Leaderboard() {
 
           if (profError) throw profError;
 
-          // STEP 3: Merge the data manually
+          // 3. Merge data and generate Ranks
           const mergedData = lbData.map((entry, index) => {
             const profile = profData?.find(p => p.id === entry.user_id);
             return {
-              id: entry.user_id + index,
+              recordId: entry.id, // Using the table's primary key for unique identity
               rank: index + 1,
-              user_name: profile?.full_name || profile?.email || "Anonymous Architect",
-              score: entry.total_score || 0,
+              user_name: profile?.full_name || profile?.email?.split('@')[0] || "Anonymous Architect",
+              xp: entry.xp || 0,
               challenges: entry.challenges_completed || 0,
               accuracy: entry.accuracy || 0,
-              company: "Independent"
+              streak: entry.streaks || 0,
             };
           });
 
@@ -114,6 +114,7 @@ export default function Leaderboard() {
                 onChange={(e) => setSelectedYear(e.target.value)}
                 className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500/50 outline-none cursor-pointer"
               >
+                <option value="All">All Years</option>
                 {YEARS.map((year) => (
                   <option key={year} value={year}>{year}</option>
                 ))}
@@ -134,18 +135,21 @@ export default function Leaderboard() {
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
             
             {/* Podium (Top 3) */}
-            {leaderboard.length >= 3 && (
-              <div className="flex justify-center items-end gap-4 p-8 bg-linear-to-b from-emerald-500/10 to-transparent border-b border-white/5">
-                {[leaderboard[1], leaderboard[0], leaderboard[2]].map((user, i) => (
-                  <div key={user.id} className={`text-center ${i === 1 ? "-mt-6" : ""}`}>
-                    <div className={`mx-auto mb-3 rounded-full border-2 flex items-center justify-center font-black bg-black/40
-                      ${i === 1 ? "w-20 h-20 text-3xl border-yellow-500 text-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]" : "w-16 h-16 text-xl border-gray-500 text-gray-400"}`}>
-                      {i === 1 ? "1" : i === 0 ? "2" : "3"}
+            {leaderboard.length > 0 && (
+              <div className="flex justify-center items-end gap-4 p-8 bg-gradient-to-b from-emerald-500/10 to-transparent border-b border-white/5">
+                {[leaderboard[1], leaderboard[0], leaderboard[2]].map((user, i) => {
+                  if (!user) return <div key={`empty-podium-${i}`} className="w-16 md:w-20" />;
+                  return (
+                    <div key={`podium-${user.recordId}`} className={`text-center ${i === 1 ? "-mt-6 scale-110" : "opacity-80"}`}>
+                      <div className={`mx-auto mb-3 rounded-full border-2 flex items-center justify-center font-black bg-black/40
+                        ${i === 1 ? "w-20 h-20 text-3xl border-yellow-500 text-yellow-500 shadow-[0_0_20px_rgba(234,179,8,0.2)]" : "w-16 h-16 text-xl border-gray-500 text-gray-400"}`}>
+                        {i === 1 ? "1" : i === 0 ? "2" : "3"}
+                      </div>
+                      <p className="text-white font-bold text-xs md:text-sm truncate max-w-[100px]">{user.user_name}</p>
+                      <p className="text-emerald-400 font-mono font-bold text-lg">{(user.xp || 0).toLocaleString()} XP</p>
                     </div>
-                    <p className="text-white font-bold text-sm truncate max-w-30">{user.user_name}</p>
-                    <p className="text-emerald-400 font-mono font-bold text-lg">{user.score.toLocaleString()}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
@@ -153,7 +157,7 @@ export default function Leaderboard() {
             <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-white/5 text-[10px] font-mono text-gray-500 uppercase tracking-widest border-b border-white/10">
               <span className="col-span-1 text-center">Rank</span>
               <span className="col-span-5">Architect</span>
-              <span className="col-span-2 text-right">Score_XP</span>
+              <span className="col-span-2 text-right">XP_Level</span>
               <span className="col-span-2 text-right">Missions</span>
               <span className="col-span-2 text-right">Sync_Acc</span>
             </div>
@@ -161,11 +165,11 @@ export default function Leaderboard() {
             {/* Table Body */}
             <div className="divide-y divide-white/5">
               {leaderboard.map((entry) => (
-                <div key={entry.id} className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-white/5 transition-colors items-center">
+                <div key={entry.recordId} className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-white/5 transition-colors items-center">
                   <div className="col-span-1 text-center font-mono">
                     {entry.rank <= 3 ? 
                       <span className="text-xl">{entry.rank === 1 ? "🏆" : entry.rank === 2 ? "🥈" : "🥉"}</span> : 
-                      <span className="text-gray-500">{entry.rank}</span>
+                      <span className="text-gray-500 text-sm">#{entry.rank}</span>
                     }
                   </div>
                   <div className="col-span-5 flex items-center gap-3">
@@ -174,11 +178,11 @@ export default function Leaderboard() {
                     </div>
                     <div className="truncate">
                       <p className="text-white font-medium text-sm truncate">{entry.user_name}</p>
-                      <p className="text-[10px] text-gray-500 font-mono uppercase">{entry.company}</p>
+                      <p className="text-[10px] text-emerald-500/50 font-mono uppercase">STREAK: {entry.streak} DAYS</p>
                     </div>
                   </div>
                   <div className="col-span-2 text-right text-emerald-400 font-bold font-mono">
-                    {entry.score.toLocaleString()}
+                    {(entry.xp || 0).toLocaleString()}
                   </div>
                   <div className="col-span-2 text-right text-gray-400 font-mono">
                     {entry.challenges}
