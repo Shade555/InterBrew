@@ -260,21 +260,12 @@ export default function LessonView({ module, onBack, onComplete }) {
     isAiSpeakingRef.current = true;
     setIsAiSpeaking(true);
     utter.onstart = () => {
-      // Delay mic by 1 s so TTS echo doesn't trigger the interrupt path
-      setTimeout(() => {
-        if (isAiSpeakingRef.current && !interviewEndedRef.current)
-          startListening();
-      }, 1000);
+      // No automatic listening — user will click button to speak
     };
     utter.onend = () => {
       isAiSpeakingRef.current = false;
       setIsAiSpeaking(false);
-      if (
-        !recognitionRef.current &&
-        !interviewEndedRef.current &&
-        !isSendingRef.current
-      )
-        startListening();
+      // No automatic listening — user will click button to speak
     };
     utter.onerror = () => {
       isAiSpeakingRef.current = false;
@@ -335,20 +326,24 @@ export default function LessonView({ module, onBack, onComplete }) {
         recognitionRef.current = null;
         setIsListening(false);
       }
-      // Auto-restart unless interview is over or a send is in flight
-      if (!interviewEndedRef.current && !isSendingRef.current) startListening();
+      // No automatic restart — user will click button again to continue
     };
 
-    recognition.onerror = () => {
-      // onend fires after onerror and handles restart
+    recognition.onerror = (event) => {
+      console.warn("Speech recognition error:", event.error);
+      setIsListening(false);
+      // Don't stop the recognizer on error, let onend handle it
+      // Some errors are recoverable if we just wait
     };
 
     try {
       recognitionRef.current = recognition;
       recognition.start();
       setIsListening(true);
-    } catch (_) {
+    } catch (e) {
+      console.warn("Failed to start speech recognition:", e);
       recognitionRef.current = null;
+      setIsListening(false);
     }
   };
 
@@ -372,7 +367,7 @@ export default function LessonView({ module, onBack, onComplete }) {
     setVoiceTranscript("");
     if (!answer) {
       isSendingRef.current = false;
-      if (!interviewEndedRef.current) startListening();
+      // No automatic restart — user will click button again
       return;
     }
     setInterviewMessages((prev) => {
@@ -472,6 +467,9 @@ export default function LessonView({ module, onBack, onComplete }) {
     const userResponses = interviewMessagesRef.current
       .filter((m) => m.role === "user")
       .map((m) => m.text);
+    const aiMessages = interviewMessagesRef.current
+      .filter((m) => m.role === "ai")
+      .map((m) => m.text);
     const avgResponseLength =
       userResponses.length > 0
         ? Math.round(
@@ -479,6 +477,9 @@ export default function LessonView({ module, onBack, onComplete }) {
               userResponses.length,
           )
         : 0;
+
+    // Count total questions asked (number of AI messages)
+    const totalQuestionsAsked = aiMessages.length;
 
     // Hesitation: count filler words across all user responses
     const fillerPattern =
@@ -489,8 +490,15 @@ export default function LessonView({ module, onBack, onComplete }) {
     const interrupts = interruptCountRef.current;
     const pauses = pauseCountRef.current;
 
+    // Participation engagement level: if barely spoke, cap all soft skills
+    const participationLevel = Math.min(100, avgResponseLength * 5); // 0-100 scale based on response length
+    const maxSoftSkillScore =
+      participationLevel < 20 ? 1 : participationLevel < 50 ? 2 : 3;
+
     // Soft skill scores (1–5)
-    const clarityScore =
+    // But heavily penalize if user barely participated
+    const clarityScore = Math.min(
+      maxSoftSkillScore,
       avgResponseLength >= 25
         ? 5
         : avgResponseLength >= 18
@@ -499,9 +507,11 @@ export default function LessonView({ module, onBack, onComplete }) {
             ? 3
             : avgResponseLength >= 6
               ? 2
-              : 1;
+              : 1,
+    );
 
-    const listeningScore =
+    const listeningScore = Math.min(
+      maxSoftSkillScore,
       interrupts === 0
         ? 5
         : interrupts === 1
@@ -510,9 +520,11 @@ export default function LessonView({ module, onBack, onComplete }) {
             ? 3
             : interrupts === 3
               ? 2
-              : 1;
+              : 1,
+    );
 
-    const confidenceScore =
+    const confidenceScore = Math.min(
+      maxSoftSkillScore,
       hesitationCount === 0 && pauses <= 1 && avgResponseLength >= 15
         ? 5
         : hesitationCount <= 2 && pauses <= 3 && avgResponseLength >= 10
@@ -521,7 +533,8 @@ export default function LessonView({ module, onBack, onComplete }) {
             ? 3
             : hesitationCount <= 7
               ? 2
-              : 1;
+              : 1,
+    );
 
     const strengths = [];
     const improvements = [];
@@ -533,16 +546,34 @@ export default function LessonView({ module, onBack, onComplete }) {
         `Interrupted the interviewer ${interrupts} time${interrupts > 1 ? "s" : ""} — practice active listening`,
       );
 
-    if (hesitationCount === 0)
-      strengths.push("Spoke fluently with no noticeable filler words");
-    else if (hesitationCount <= 3)
+    // If barely participated, force improvement suggestion
+    if (userResponses.length === 0 && interrupts === 0) {
       improvements.push(
-        `${hesitationCount} filler word${hesitationCount > 1 ? "s" : ""} detected — try to pause instead of using fillers`,
+        "Participate in the interview by responding to questions instead of ending early",
       );
-    else
+    } else if (userResponses.length === 0 && interrupts > 0) {
       improvements.push(
-        `${hesitationCount} filler words detected — slow down and breathe before answering`,
+        `You ended the interview early without providing answers — complete the full interview next time`,
       );
+    }
+
+    // Only credit fluency if they actually spoke meaningfully
+    if (avgResponseLength >= 5) {
+      if (hesitationCount === 0)
+        strengths.push("Spoke fluently with no noticeable filler words");
+      else if (hesitationCount <= 3)
+        improvements.push(
+          `${hesitationCount} filler word${hesitationCount > 1 ? "s" : ""} detected — try to pause instead of using fillers`,
+        );
+      else
+        improvements.push(
+          `${hesitationCount} filler words detected — slow down and breathe before answering`,
+        );
+    } else if (avgResponseLength > 0) {
+      improvements.push(
+        "You barely spoke during the interview — try to provide fuller answers",
+      );
+    }
 
     if (quizPercent >= 80)
       strengths.push("Strong grasp of theoretical concepts");
@@ -562,18 +593,56 @@ export default function LessonView({ module, onBack, onComplete }) {
     else
       improvements.push("Provide more detailed responses during the interview");
 
-    if (userResponses.length >= 4)
+    if (userResponses.length >= totalQuestionsAsked && totalQuestionsAsked > 0)
       strengths.push("Completed all interview questions");
     if (correctCount === totalQuiz && totalQuiz > 0)
       strengths.push("Perfect quiz score!");
-    if (strengths.length === 0)
-      strengths.push("Completed the full module flow");
+
+    // Remove vague strength if user barely participated
+    if (strengths.length === 0) {
+      if (
+        userResponses.length > 0 &&
+        userResponses.length < totalQuestionsAsked
+      ) {
+        improvements.push(
+          "Engage more fully in the interview — try answering more questions",
+        );
+      } else if (userResponses.length === 0) {
+        improvements.push(
+          "Participate in the interview by answering the questions asked",
+        );
+      } else {
+        strengths.push("Completed the full module flow");
+      }
+    }
+
+    // Only add generic improvement if nothing else was added
     if (improvements.length === 0)
       improvements.push("Continue practicing to maintain your skills");
 
     let overallRating, ratingColor;
     const interruptPenalty = interrupts * 10;
     const adjustedQuiz = Math.max(0, quizPercent - interruptPenalty);
+
+    // Calculate final score: 50% quiz + 50% interview performance
+    // Interview completion rate: how many questions answered vs expected
+    const interviewCompletionRate =
+      totalQuestionsAsked > 0
+        ? Math.min(100, (userResponses.length / totalQuestionsAsked) * 100)
+        : 0;
+
+    // Interview score based on soft skills and completion rate
+    const avgSoftSkill = (clarityScore + listeningScore + confidenceScore) / 3;
+    const softSkillPercent = (avgSoftSkill / 5) * 100;
+    // If interview barely happened, penalize it heavily
+    const interviewScore =
+      interviewCompletionRate > 0
+        ? Math.round((softSkillPercent * interviewCompletionRate) / 100)
+        : 0;
+
+    // Final score: 50% quiz + 50% interview
+    const finalScore = Math.round(quizPercent * 0.5 + interviewScore * 0.5);
+
     if (adjustedQuiz >= 80 && avgResponseLength >= 15) {
       overallRating = "Excellent";
       ratingColor = "emerald";
@@ -594,8 +663,10 @@ export default function LessonView({ module, onBack, onComplete }) {
         total: totalQuiz,
         percent: quizPercent,
       },
+      finalScore,
       interviewStats: {
         questionsAnswered: userResponses.length,
+        totalQuestions: totalQuestionsAsked,
         avgWords: avgResponseLength,
       },
       behavioralStats: {
@@ -983,9 +1054,67 @@ export default function LessonView({ module, onBack, onComplete }) {
                     )}
                   </div>
                 </div>
+                {/* Start/Stop speaking button */}
+                <button
+                  onClick={() => {
+                    if (isListening) {
+                      // Stop listening and send
+                      stopAndSend();
+                    } else {
+                      // Count as interrupt if bot was or is speaking
+                      if (isAiSpeakingRef.current || interviewStarted) {
+                        interruptCountRef.current += 1;
+                      }
+
+                      window.speechSynthesis.cancel();
+                      isAiSpeakingRef.current = false;
+                      setIsAiSpeaking(false);
+
+                      // Stop any existing recognizer first
+                      if (recognitionRef.current) {
+                        try {
+                          recognitionRef.current.stop();
+                        } catch (_) {}
+                        recognitionRef.current = null;
+                      }
+
+                      // Clear any pending send delay
+                      if (sendDelayRef.current) {
+                        clearTimeout(sendDelayRef.current);
+                        sendDelayRef.current = null;
+                      }
+
+                      // Small delay to let recognizer fully stop before restarting
+                      setTimeout(() => {
+                        if (!isListening) {
+                          startListening();
+                        }
+                      }, 100);
+                    }
+                  }}
+                  className={`relative z-10 mt-6 px-8 py-3 rounded-lg font-medium text-sm transition-all ${
+                    isListening
+                      ? "bg-rose-500/20 border border-rose-500/40 text-rose-400 hover:bg-rose-500/30"
+                      : "bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30"
+                  }`}
+                >
+                  {isListening ? "Click to Stop" : "Start to Speak"}
+                </button>
                 {/* End interview button */}
                 <button
                   onClick={() => {
+                    // Count as interrupt if ending early
+                    // (before providing meaningful responses)
+                    const userResponseCount =
+                      interviewMessagesRef.current.filter(
+                        (m) => m.role === "user",
+                      ).length;
+
+                    // If ended without responding or while bot was speaking, it's an interrupt
+                    if (isAiSpeakingRef.current || userResponseCount === 0) {
+                      interruptCountRef.current += 1;
+                    }
+
                     if (sendDelayRef.current) {
                       clearTimeout(sendDelayRef.current);
                       sendDelayRef.current = null;
@@ -1048,6 +1177,19 @@ export default function LessonView({ module, onBack, onComplete }) {
               </div>
             </div>
 
+            {/* Final Score */}
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-5 text-center">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">
+                Final Score
+              </p>
+              <p className="text-4xl font-bold text-emerald-400">
+                {feedback.finalScore}%
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Combined interview & quiz performance
+              </p>
+            </div>
+
             {/* Stats row */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-white/3 border border-white/8 rounded-xl p-4 text-center">
@@ -1061,7 +1203,8 @@ export default function LessonView({ module, onBack, onComplete }) {
               </div>
               <div className="bg-white/3 border border-white/8 rounded-xl p-4 text-center">
                 <p className="text-2xl font-bold text-white">
-                  {feedback.interviewStats.questionsAnswered}/4
+                  {feedback.interviewStats.questionsAnswered}/
+                  {feedback.interviewStats.totalQuestions}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   Interview Questions (avg {feedback.interviewStats.avgWords}{" "}

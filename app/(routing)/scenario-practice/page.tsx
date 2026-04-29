@@ -39,7 +39,11 @@ export default function ScenarioPracticePage() {
                         { onConflict: "user_id,module_id" },
                       );
                       // increment daily streak once per day when a module is completed
-                      try { await tryIncrementStreak(); } catch (e) { /* ignore */ }
+                      try {
+                        await tryIncrementStreak();
+                      } catch (e) {
+                        /* ignore */
+                      }
                     }
                   } catch (err) {
                     console.warn(
@@ -84,6 +88,10 @@ export default function ScenarioPracticePage() {
             <Content
               selectedScenario={selectedScenario}
               onStartPractice={() => setPracticeMode(true)}
+              onModuleSelect={(module) => {
+                setPracticeMode(true);
+                setActiveModule(module);
+              }}
             />
           </div>
 
