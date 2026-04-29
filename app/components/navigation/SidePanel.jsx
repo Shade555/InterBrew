@@ -12,7 +12,7 @@ const items = [
     icon: "scenario-practice.png",
   },
   { href: "/leaderboard", label: "Leaderboard", icon: "leaderboard.png" },
-  { href: "/challenge", label: "Challenge", icon: "challenges.png" },
+  { href: "/challenges", label: "Challenge", icon: "challenges.png" },
 ];
 
 export default function SidePanel() {

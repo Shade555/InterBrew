@@ -3,6 +3,18 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+// Since you mentioned there is no company table anymore, 
+// we will treat these as labels or categories if needed.
+const COMPANIES = ["Meta", "Amazon", "Netflix", "Google", "Apple"];
+
+const COMPANY_COLORS = {
+  Meta: "#3b82f6",
+  Amazon: "#f97316",
+  Netflix: "#ef4444",
+  Google: "#22c55e",
+  Apple: "#6b7280",
+};
+
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -11,59 +23,74 @@ const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1];
 
 export default function Leaderboard() {
+  const [selectedCompany, setSelectedCompany] = useState("All");
   const [selectedMonth, setSelectedMonth] = useState("All");
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR.toString());
   const [leaderboard, setLeaderboard] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [useMockData, setUseMockData] = useState(false);
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
       try {
         setLoading(true);
-        if (!supabase) return;
 
-        // STEP 1: Fetch raw leaderboard data
-        let lbQuery = supabase
+        if (!supabase) {
+          setUseMockData(true);
+          setLeaderboard([]);
+          setLoading(false);
+          return;
+        }
+
+        // Query based on your specific schema: total_score and xp
+        // We also fetch user metadata from the auth table via the foreign key
+        let query = supabase
           .from("leaderboard")
-          .select("user_id, total_score, challenges_completed, accuracy, month, year")
+          .select(`
+            *,
+            user:user_id ( 
+              email, 
+              raw_user_meta_data 
+            )
+          `)
           .order("total_score", { ascending: false });
 
-        if (selectedMonth !== "All") lbQuery = lbQuery.eq("month", parseInt(selectedMonth));
-        if (selectedYear) lbQuery = lbQuery.eq("year", parseInt(selectedYear));
+        // Filter by month if selected
+        if (selectedMonth !== "All") {
+          query = query.eq("month", parseInt(selectedMonth));
+        }
 
-        const { data: lbData, error: lbError } = await lbQuery;
-        if (lbError) throw lbError;
+        // Filter by year if selected
+        if (selectedYear) {
+          query = query.eq("year", parseInt(selectedYear));
+        }
 
-        if (lbData && lbData.length > 0) {
-          // STEP 2: Fetch profiles for these specific users to avoid join errors
-          const userIds = lbData.map(entry => entry.user_id);
-          const { data: profData, error: profError } = await supabase
-            .from("profiles")
-            .select("id, full_name, email")
-            .in("id", userIds);
+        const { data, error } = await query;
 
-          if (profError) throw profError;
+        if (error) throw error;
 
-          // STEP 3: Merge the data manually
-          const mergedData = lbData.map((entry, index) => {
-            const profile = profData?.find(p => p.id === entry.user_id);
-            return {
-              id: entry.user_id + index,
-              rank: index + 1,
-              user_name: profile?.full_name || profile?.email || "Anonymous Architect",
-              score: entry.total_score || 0,
-              challenges: entry.challenges_completed || 0,
-              accuracy: entry.accuracy || 0,
-              company: "Independent"
-            };
-          });
+        if (data && data.length > 0) {
+          // Transform data to match UI expectations
+          // We calculate rank dynamically based on the sorted index
+          const transformedData = data.map((entry, index) => ({
+            id: entry.id,
+            rank: index + 1,
+            user_name: entry.user?.raw_user_meta_data?.full_name || entry.user?.email || "Anonymous User",
+            company: "Independent", // Placeholder since company table is gone
+            score: entry.total_score || entry.xp || 0,
+            challenges: entry.challenges_completed || 0,
+            accuracy: entry.accuracy || 0,
+          }));
 
-          setLeaderboard(mergedData);
+          setLeaderboard(transformedData);
+          setUseMockData(false);
         } else {
           setLeaderboard([]);
+          setUseMockData(false);
         }
       } catch (err) {
-        console.error("Leaderboard Sync Error:", err.message);
+        console.error("Leaderboard error:", err.message);
+        setUseMockData(false);
       } finally {
         setLoading(false);
       }
@@ -71,6 +98,8 @@ export default function Leaderboard() {
 
     fetchLeaderboard();
   }, [selectedMonth, selectedYear]);
+
+  const getCompanyColor = (company) => COMPANY_COLORS[company] || "#10b981";
 
   return (
     <div className="relative min-h-screen bg-black/30 overflow-hidden font-sans">
@@ -83,7 +112,7 @@ export default function Leaderboard() {
       <div className="relative z-10 min-h-screen p-4 md:p-6 max-w-6xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 tracking-tight">
-            LEADERBOARD
+            KERNEL_LEADERBOARD
           </h1>
           <p className="text-gray-400 text-sm font-mono uppercase tracking-widest">
             Top performing system architects
@@ -98,7 +127,7 @@ export default function Leaderboard() {
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500/50 outline-none cursor-pointer"
+                className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500/50 outline-none"
               >
                 <option value="All">All Time</option>
                 {MONTHS.map((month, idx) => (
@@ -112,7 +141,7 @@ export default function Leaderboard() {
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(e.target.value)}
-                className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500/50 outline-none cursor-pointer"
+                className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-emerald-500/50 outline-none"
               >
                 {YEARS.map((year) => (
                   <option key={year} value={year}>{year}</option>
@@ -132,8 +161,7 @@ export default function Leaderboard() {
           </div>
         ) : (
           <div className="bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
-            
-            {/* Podium (Top 3) */}
+            {/* Podium (Only for All-Time/Top scores) */}
             {leaderboard.length >= 3 && (
               <div className="flex justify-center items-end gap-4 p-8 bg-gradient-to-b from-emerald-500/10 to-transparent border-b border-white/5">
                 {[leaderboard[1], leaderboard[0], leaderboard[2]].map((user, i) => (
@@ -149,7 +177,6 @@ export default function Leaderboard() {
               </div>
             )}
 
-            {/* Table Header */}
             <div className="grid grid-cols-12 gap-4 px-6 py-4 bg-white/5 text-[10px] font-mono text-gray-500 uppercase tracking-widest border-b border-white/10">
               <span className="col-span-1 text-center">Rank</span>
               <span className="col-span-5">Architect</span>
@@ -158,15 +185,11 @@ export default function Leaderboard() {
               <span className="col-span-2 text-right">Sync_Acc</span>
             </div>
 
-            {/* Table Body */}
             <div className="divide-y divide-white/5">
               {leaderboard.map((entry) => (
                 <div key={entry.id} className="grid grid-cols-12 gap-4 px-6 py-4 hover:bg-white/5 transition-colors items-center">
                   <div className="col-span-1 text-center font-mono">
-                    {entry.rank <= 3 ? 
-                      <span className="text-xl">{entry.rank === 1 ? "🏆" : entry.rank === 2 ? "🥈" : "🥉"}</span> : 
-                      <span className="text-gray-500">{entry.rank}</span>
-                    }
+                    {entry.rank <= 3 ? <span className="text-xl">{entry.rank === 1 ? "🏆" : entry.rank === 2 ? "🥈" : "🥉"}</span> : <span className="text-gray-500">{entry.rank}</span>}
                   </div>
                   <div className="col-span-5 flex items-center gap-3">
                     <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center font-bold text-emerald-400 text-xs">
