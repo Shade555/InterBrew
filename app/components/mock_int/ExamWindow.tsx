@@ -231,11 +231,13 @@ export default function ExamWindow({
   onClose,
   topic,
   moduleId,
+  onInterviewComplete,
 }: {
   difficulty: string;
   onClose: () => void;
   topic: string;
   moduleId?: string;
+  onInterviewComplete?: (topic: string) => void;
 }) {
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([]);
   const historyRef = useRef<Array<{ role: string; content: string }>>([]);
@@ -416,6 +418,9 @@ const closingRegex =
             }
             try {
               await tryIncrementStreak();
+            } catch (e) {}
+            try {
+              onInterviewComplete?.(topic);
             } catch (e) {}
             try {
               stopSpeaking?.();
@@ -612,6 +617,9 @@ Output Format:
             await tryIncrementStreak();
           } catch (e) {}
           try {
+            onInterviewComplete?.(topic);
+          } catch (e) {}
+          try {
             stopSpeaking?.();
           } catch (e) {}
           setStatus("Interview Complete");
@@ -680,6 +688,21 @@ Output Format:
           }`}>
             {status}
           </div>
+          <button
+            onClick={async () => {
+              if (finishedRef.current) return;
+              finishedRef.current = true;
+              preventCloseRef.current = false;
+              try { await tryIncrementStreak(); } catch (e) {}
+              try { onInterviewComplete?.(topic); } catch (e) {}
+              setStatus("Interview Complete");
+              setTimeout(() => { onClose?.(); }, 2000);
+            }}
+            className="px-3 py-1.5 rounded-md text-xs font-medium bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 hover:bg-yellow-500/30 transition-colors"
+            title="Debug: simulate interview completion"
+          >
+            ⚡ Complete
+          </button>
         </div>
       </div>
 

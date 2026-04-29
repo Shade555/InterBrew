@@ -42,40 +42,36 @@ export default function CertificationsCard() {
         const interviewsThisWeek = dashboardRes.data?.this_week?.interviews || 0;
         
         // Only attempt to award once per component mount (prevents React StrictMode double-runs)
-        if (awardsAttempted.current) {
-          return;
-        }
-        awardsAttempted.current = true;
-        
-        // Auto-award milestone certifications
-        const milestones = [
-          { condition: true, title: "First Login 🎉", issuer: "Neofuture" },
-          { condition: interviewsThisWeek >= 10, title: "10 Interviews Master", issuer: "Neofuture" }
-        ];
+        if (!awardsAttempted.current) {
+          awardsAttempted.current = true;
 
-        for (const milestone of milestones) {
-          if (milestone.condition) {
-            // Check if already awarded - use maybeSingle to avoid errors
-            const { data: existing } = await supabase
-              .from("certifications")
-              .select("id")
-              .eq("user_id", authData.user.id)
-              .eq("title", milestone.title)
-              .maybeSingle();
-            
-            // Only insert if it doesn't already exist
-            if (!existing) {
-              console.log(`Awarding ${milestone.title}`);
-              await supabase
+          // Auto-award milestone certifications
+          const milestones = [
+            { condition: true, title: "First Login 🎉", issuer: "InterBrew" },
+            { condition: interviewsThisWeek >= 10, title: "10 Interviews Master", issuer: "InterBrew" }
+          ];
+
+          for (const milestone of milestones) {
+            if (milestone.condition) {
+              const { data: existing } = await supabase
                 .from("certifications")
-                .insert({
+                .select("id")
+                .eq("user_id", authData.user.id)
+                .eq("title", milestone.title)
+                .maybeSingle();
+              
+              if (!existing) {
+                await supabase.from("certifications").insert({
                   user_id: authData.user.id,
                   title: milestone.title,
                   issuer: milestone.issuer,
                   issue_date: new Date().toISOString()
                 });
+              }
             }
           }
+
+          // Award "First Streak" badge if user has any streak - handled by BadgesCard
         }
 
         // Fetch ALL certifications (including newly awarded)
@@ -103,11 +99,11 @@ export default function CertificationsCard() {
   // Color variants for certifications
   const getCertColor = (index) => {
     const colors = [
-      { icon: <Zap className="w-8 h-8 text-purple-400" />, border: "hover:border-purple-500/30", text: "group-hover:text-purple-300", bg: "from-purple-500/10" },
-      { icon: <Star className="w-8 h-8 text-blue-400" />, border: "hover:border-blue-500/30", text: "group-hover:text-blue-300", bg: "from-blue-500/10" },
-      { icon: <Shield className="w-8 h-8 text-pink-400" />, border: "hover:border-pink-500/30", text: "group-hover:text-pink-300", bg: "from-pink-500/10" },
-      { icon: <Rocket className="w-8 h-8 text-orange-400" />, border: "hover:border-orange-500/30", text: "group-hover:text-orange-300", bg: "from-orange-500/10" },
-      { icon: <Zap className="w-8 h-8 text-cyan-400" />, border: "hover:border-cyan-500/30", text: "group-hover:text-cyan-300", bg: "from-cyan-500/10" },
+      { icon: <Zap className="w-5 h-5 text-purple-400" />, border: "hover:border-purple-500/30", text: "group-hover:text-purple-300", bg: "from-purple-500/10" },
+      { icon: <Star className="w-5 h-5 text-blue-400" />, border: "hover:border-blue-500/30", text: "group-hover:text-blue-300", bg: "from-blue-500/10" },
+      { icon: <Shield className="w-5 h-5 text-pink-400" />, border: "hover:border-pink-500/30", text: "group-hover:text-pink-300", bg: "from-pink-500/10" },
+      { icon: <Rocket className="w-5 h-5 text-orange-400" />, border: "hover:border-orange-500/30", text: "group-hover:text-orange-300", bg: "from-orange-500/10" },
+      { icon: <Zap className="w-5 h-5 text-cyan-400" />, border: "hover:border-cyan-500/30", text: "group-hover:text-cyan-300", bg: "from-cyan-500/10" },
     ];
     return colors[index % colors.length];
   };
@@ -148,50 +144,47 @@ export default function CertificationsCard() {
           <p className="text-gray-500 text-xs mt-1">Add your certifications to showcase your skills</p>
         </div>
       ) : (
-        <div className="space-y-3 overflow-y-auto max-h-50 pr-1">
+        <div className="flex flex-col gap-2.5 overflow-y-auto flex-1 pr-0.5">
           {certifications.map((cert, index) => {
             const colorVariant = getCertColor(index);
             return (
-              <div 
-                key={cert.id} 
-                className={`bg-linear-to-r ${colorVariant.bg} to-transparent rounded-lg p-3 border border-white/10 ${colorVariant.border} transition-all group`}
+              <div
+                key={cert.id}
+                className={`bg-gradient-to-r ${colorVariant.bg} to-transparent rounded-lg p-3 border border-white/10 ${colorVariant.border} transition-all group`}
               >
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5">
+                  <div className="flex-shrink-0 mt-0.5">
+                    {colorVariant.icon}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {colorVariant.icon}
-                      <h3 className={`text-white font-medium text-sm truncate ${colorVariant.text} transition-colors`}>
+                    <div className="flex items-start justify-between gap-1">
+                      <h3 className={`text-white font-medium text-xs leading-snug ${colorVariant.text} transition-colors`}>
                         {cert.title}
                       </h3>
+                      {cert.credential_url && (
+                        <a
+                          href={cert.credential_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-shrink-0 p-1 bg-white/5 hover:bg-purple-500/20 rounded text-gray-400 hover:text-purple-400 transition-all"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
                     </div>
-                    
-                    <p className="text-gray-400 text-xs mt-1 truncate">
-                      {cert.issuer}
-                    </p>
-
+                    <p className="text-gray-400 text-xs mt-0.5">{cert.issuer}</p>
                     {cert.issue_date && (
-                      <div className="flex items-center gap-1 mt-1.5 text-gray-500">
-                        <Calendar className="w-3 h-3" />
+                      <div className="flex items-center gap-1 mt-1 text-gray-500">
+                        <Calendar className="w-3 h-3 flex-shrink-0" />
                         <span className="text-xs">
-                          {new Date(cert.issue_date).toLocaleDateString("en-US", { 
-                            month: "short", 
-                            year: "numeric" 
+                          {new Date(cert.issue_date).toLocaleDateString("en-US", {
+                            month: "short",
+                            year: "numeric",
                           })}
                         </span>
                       </div>
                     )}
                   </div>
-
-                  {cert.credential_url && (
-                    <a
-                      href={cert.credential_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 bg-white/5 hover:bg-purple-500/20 rounded-lg text-gray-400 hover:text-purple-400 transition-all"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  )}
                 </div>
               </div>
             );

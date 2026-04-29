@@ -7,89 +7,63 @@ import { supabase } from "@/lib/supabaseClient";
 export default function PersonalInfo() {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [progressPct, setProgressPct] = useState(0);
+  const [streak, setStreak] = useState(0);
 
   useEffect(() => {
     const fetchProfile = async () => {
-      // Handle missing Supabase client
-      if (!supabase) {
-        console.log("Supabase not available, using demo data");
-        setLoading(false);
-        return;
-      }
+      if (!supabase) { setLoading(false); return; }
 
       try {
-        // Retry logic for auth session (handles OAuth redirect delay)
         let user = null;
         let retries = 0;
-        const maxRetries = 5;
-
-        while (!user && retries < maxRetries) {
+        while (!user && retries < 5) {
           const { data: authData, error: authError } = await supabase.auth.getUser();
-
-          if (authError) {
-            console.warn(`Auth attempt ${retries + 1}/${maxRetries} failed:`, authError.message);
-            retries++;
-            if (retries < maxRetries) {
-              // Wait 500ms before retrying
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
-            continue;
-          }
-
+          if (authError) { retries++; await new Promise(r => setTimeout(r, 500)); continue; }
           user = authData?.user;
-          if (!user && retries < maxRetries - 1) {
-            retries++;
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
+          if (!user && retries < 4) { retries++; await new Promise(r => setTimeout(r, 500)); }
+          else break;
         }
 
-        if (!user) {
-          console.error("Could not establish auth session after retries");
-          setLoading(false);
-          return;
-        }
+        if (!user) { setLoading(false); return; }
 
-        if (!user) {
-          setLoading(false);
-          return;
-        }
-
-        // Try fetching profile
-        let { data: profileData, error } = await supabase
+        let { data: profileData } = await supabase
           .from("profiles")
           .select("*")
           .eq("id", user.id)
           .maybeSingle();
 
-        if (error) {
-          console.error("Error fetching profile - Full error:", error);
-          console.error("Error fetching profile details:", {
-            message: error?.message || "No message",
-            code: error?.code || "No code",
-            details: error?.details || "No details",
-            hint: error?.hint || "No hint",
-            toString: error?.toString?.(),
-          });
-        }
-
-        // If profile does not exist, just use fallback data
         if (!profileData) {
-          // Extract email username (part before @) as fallback
           const emailUsername = user.email?.split('@')[0] || "";
-          const displayName = user.user_metadata?.full_name || user.user_metadata?.name || emailUsername || "";
-          
-          // Profile should have been created by trigger on signup
-          // Use fallback if it doesn't exist yet
-          profileData = { 
-            id: user.id, 
-            email: user.email, 
-            full_name: displayName,
-            avatar_url: user.user_metadata?.avatar_url || ""
+          profileData = {
+            id: user.id,
+            email: user.email,
+            full_name: user.user_metadata?.full_name || user.user_metadata?.name || emailUsername || "",
+            avatar_url: user.user_metadata?.avatar_url || "",
           };
-          console.log("Profile not found - using fallback data:", profileData);
         }
 
         setUserData(profileData);
+
+        // Fetch collection progress + streak in parallel
+        const [{ count: totalCount }, { count: completedCount }, dashboardRes] = await Promise.all([
+          supabase.from("collection_modules").select("id", { count: "exact", head: true }),
+          supabase
+            .from("user_collection_module_progress")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("completed", true),
+          supabase
+            .from("user_dashboards")
+            .select("streak")
+            .eq("user_id", user.id)
+            .single(),
+        ]);
+
+        const total = totalCount ?? 0;
+        const completed = completedCount ?? 0;
+        setProgressPct(total > 0 ? Math.round((completed / total) * 100) : 0);
+        setStreak(dashboardRes.data?.streak ?? 0);
       } catch (err) {
         console.error("Exception fetching profile:", err);
       } finally {
@@ -115,27 +89,19 @@ export default function PersonalInfo() {
     );
   }
 
-  const accuracy = userData?.accuracy || 0;
-  const getAccuracyColor = () => {
-    if (accuracy >= 80) return "from-emerald-400 to-teal-500";
-    if (accuracy >= 60) return "from-yellow-400 to-orange-500";
+  const getProgressColor = () => {
+    if (progressPct >= 80) return "from-emerald-400 to-teal-500";
+    if (progressPct >= 60) return "from-yellow-400 to-orange-500";
+    if (progressPct >= 40) return "from-blue-400 to-cyan-500";
     return "from-red-400 to-pink-500";
   };
 
-  const getAccuracyText = () => {
-    if (accuracy >= 80) return "Excellent";
-    if (accuracy >= 60) return "Good";
-    if (accuracy >= 40) return "Fair";
-    return "Needs Work";
+  const getProgressLabel = () => {
+    if (progressPct >= 80) return "Excellent";
+    if (progressPct >= 60) return "Good";
+    if (progressPct >= 40) return "Fair";
+    return "Keep Going";
   };
-
-  // Color variants for icons based on index
-  const iconColorVariants = [
-    { bg: "bg-purple-500/20", color: "text-purple-400", border: "hover:border-purple-500/30" },
-    { bg: "bg-blue-500/20", color: "text-blue-400", border: "hover:border-blue-500/30" },
-    { bg: "bg-pink-500/20", color: "text-pink-400", border: "hover:border-pink-500/30" },
-    { bg: "bg-orange-500/20", color: "text-orange-400", border: "hover:border-orange-500/30" },
-  ];
 
   return (
     <div className="h-full flex flex-col">
@@ -152,51 +118,47 @@ export default function PersonalInfo() {
 
       {/* Role + Domain */}
       <div className="grid grid-cols-2 gap-3 mb-5">
-        <div className={`bg-linear-to-br from-white/10 to-white/5 rounded-xl p-4 border border-white/10 hover:border-purple-500/30 transition-colors group`}>
+        <div className="bg-gradient-to-br from-white/10 to-white/5 rounded-xl p-4 border border-white/10 hover:border-purple-500/30 transition-colors group">
           <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
             <Briefcase size={16} className="text-purple-400 group-hover:text-purple-300 transition-colors" />
             <span>Role</span>
           </div>
-          <div className="text-white font-medium truncate">
-            {userData?.role || "Not set"}
-          </div>
+          <div className="text-white font-medium truncate">{userData?.role || "Not set"}</div>
         </div>
 
-        <div className={`bg-linear-to-br from-white/10 to-white/5 rounded-xl p-4 border border-white/10 hover:border-blue-500/30 transition-colors group`}>
+        <div className="bg-gradient-to-br from-white/10 to-white/5 rounded-xl p-4 border border-white/10 hover:border-blue-500/30 transition-colors group">
           <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
             <Code size={16} className="text-blue-400 group-hover:text-blue-300 transition-colors" />
             <span>Domain</span>
           </div>
-          <div className="text-white font-medium truncate">
-            {userData?.domain || "Not set"}
-          </div>
+          <div className="text-white font-medium truncate">{userData?.domain || "Not set"}</div>
         </div>
       </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-3 gap-3 mb-5">
-        <StatCard 
-          icon={<Target size={20} />} 
+        <StatCard
+          icon={<Target size={20} />}
           iconBg="bg-purple-500/20"
           iconColor="text-purple-400"
-          label="Interviews" 
-          value={userData?.interviews_taken || 0} 
+          label="Interviews"
+          value={userData?.interviews_taken || 0}
           trend={userData?.interviews_taken > 0 ? "+" : ""}
         />
-        <StatCard 
-          icon={<CheckCircle size={20} />} 
+        <StatCard
+          icon={<CheckCircle size={20} />}
           iconBg="bg-blue-500/20"
           iconColor="text-blue-400"
-          label="Completed" 
-          value={userData?.completed || 0} 
+          label="Completed"
+          value={userData?.completed || 0}
           trend={userData?.completed > 0 ? "+" : ""}
         />
-        <StatCard 
-          icon={<TrendingUp size={20} />} 
+        <StatCard
+          icon={<TrendingUp size={20} />}
           iconBg="bg-orange-500/20"
           iconColor="text-orange-400"
-          label="Streak" 
-          value={`${userData?.user_dashboards?.streak || 0}`} 
+          label="Streak"
+          value={streak}
         />
       </div>
 
@@ -204,29 +166,30 @@ export default function PersonalInfo() {
       <div className="mt-auto">
         <div className="flex justify-between items-center mb-3">
           <div className="flex items-center gap-2">
-            <Sparkles className={`w-4 h-4 ${accuracy >= 60 ? 'text-yellow-400' : 'text-gray-500'}`} />
-            <span className="text-gray-400 text-sm">Overall Progress</span>
+            <Sparkles className={`w-4 h-4 ${progressPct >= 60 ? 'text-yellow-400' : 'text-gray-500'}`} />
+            <span className="text-gray-400 text-sm">Collection Progress</span>
           </div>
           <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-            accuracy >= 80 ? 'bg-emerald-500/20 text-emerald-400' :
-            accuracy >= 60 ? 'bg-yellow-500/20 text-yellow-400' :
+            progressPct >= 80 ? 'bg-emerald-500/20 text-emerald-400' :
+            progressPct >= 60 ? 'bg-yellow-500/20 text-yellow-400' :
+            progressPct >= 40 ? 'bg-blue-500/20 text-blue-400' :
             'bg-red-500/20 text-red-400'
           }`}>
-            {getAccuracyText()}
+            {getProgressLabel()}
           </span>
         </div>
 
         <div className="relative h-3 bg-white/10 rounded-full overflow-hidden">
-          <div 
-            className={`absolute inset-y-0 left-0 bg-linear-to-r ${getAccuracyColor()} rounded-full transition-all duration-1000 ease-out`}
-            style={{ width: `${accuracy}%` }}
+          <div
+            className={`absolute inset-y-0 left-0 bg-gradient-to-r ${getProgressColor()} rounded-full transition-all duration-1000 ease-out`}
+            style={{ width: `${progressPct}%` }}
           />
-          {/* Animated shine effect */}
-          <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-shine" />
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full animate-shine" />
         </div>
 
         <div className="flex justify-between mt-2 text-xs text-gray-500">
           <span>0%</span>
+          <span className="text-gray-400 font-medium">{progressPct}%</span>
           <span>100%</span>
         </div>
       </div>
@@ -253,10 +216,7 @@ function StatCard({ icon, iconBg, iconColor, label, value, trend }) {
       <div className="text-white text-center font-bold text-lg">
         <span>{trend}</span>{value}
       </div>
-      <div className="text-gray-500 text-center text-xs">
-        {label}
-      </div>
+      <div className="text-gray-500 text-center text-xs">{label}</div>
     </div>
   );
 }
-

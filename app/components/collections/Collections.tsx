@@ -4,6 +4,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import MockInterviewPanel from "../mock_int/mock_int.jsx";
 import { supabase } from "../../../lib/supabaseClient";
+import { awardInterviewCertification } from "../../../lib/certifications";
+import BadgeUnlockAnimation from "./BadgeUnlockAnimation";
+import CertUnlockAnimation from "./CertUnlockAnimation";
 
 type DropdownOption<T extends string> = {
   value: T;
@@ -546,6 +549,9 @@ export default function Collections({
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>("User");
   const [badgeCount, setBadgeCount] = useState<number>(0);
+  const [earnedInterviewCerts, setEarnedInterviewCerts] = useState<Set<string>>(new Set());
+  const [unlockAnim, setUnlockAnim] = useState<{ icon: string; name: string } | null>(null);
+  const [certAnim, setCertAnim] = useState<string | null>(null);
   const router = useRouter();
   const [dataError, setDataError] = useState<string>("");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
@@ -633,6 +639,25 @@ export default function Collections({
             }
           } catch (err) {
             console.warn("Failed to fetch user profile:", err);
+          }
+
+          // Fetch earned interview certifications
+          try {
+            const { data: certsData } = await supabase
+              .from("certifications")
+              .select("title")
+              .eq("user_id", currentUserId)
+              .like("title", "% — Mock Interview");
+            if (active && certsData) {
+              const earned = new Set<string>(
+                certsData.map((c: { title: string }) =>
+                  c.title.replace(" — Mock Interview", "")
+                )
+              );
+              setEarnedInterviewCerts(earned);
+            }
+          } catch (err) {
+            console.warn("Failed to fetch interview certifications:", err);
           }
         }
 
@@ -958,14 +983,56 @@ export default function Collections({
 
       if (next) {
         await unlockBadgeForCompletedSection(moduleId);
+      } else {
+        await revokeBadgeForSection(moduleId);
       }
     } catch (err) {
       console.error("Failed to save completion:", err);
     }
   }
 
-  async function unlockBadgeForCompletedSection(moduleId: string) {
+  async function revokeBadgeForSection(moduleId: string) {
     if (!userId) return;
+    try {
+      const { data: moduleRow } = await supabase
+        .from("collection_modules")
+        .select("section_key")
+        .eq("id", moduleId)
+        .maybeSingle();
+
+      const sectionKey = moduleRow?.section_key;
+      if (!sectionKey) return;
+
+      // Get both possible IDs (real DB id and fallback id)
+      const dbBadgeId = (await supabase
+        .from("collection_badges")
+        .select("id")
+        .eq("section_key", sectionKey)
+        .maybeSingle()
+      ).data?.id ?? null;
+
+      const fallbackId = `fallback-${sectionKey}`;
+
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("badges")
+        .eq("id", userId)
+        .maybeSingle();
+
+      const currentBadges: any[] = Array.isArray(profileData?.badges) ? profileData.badges : [];
+      const filtered = currentBadges.filter((b: any) => b.id !== dbBadgeId && b.id !== fallbackId);
+
+      if (filtered.length !== currentBadges.length) {
+        await supabase.from("profiles").update({ badges: filtered }).eq("id", userId);
+        console.log("[revoke] removed badge for section:", sectionKey);
+      }
+    } catch (err) {
+      console.error("[badge] revokeBadgeForSection error:", err);
+    }
+  }
+
+  async function unlockBadgeForCompletedSection(moduleId: string) {
+    if (!userId) { console.log("[badge] no userId, aborting"); return; }
 
     try {
       const { data: moduleRow, error: moduleErr } = await supabase
@@ -973,46 +1040,24 @@ export default function Collections({
         .select("section_key, section_id")
         .eq("id", moduleId)
         .maybeSingle();
-      if (moduleErr) {
-        console.error(
-          "Step 1 - Get module section_key failed:",
-          moduleErr?.message || moduleErr,
-        );
-        throw moduleErr;
-      }
+      if (moduleErr) { console.error("[badge] Step 1 failed:", moduleErr?.message); throw moduleErr; }
 
       const sectionKey = moduleRow?.section_key;
       const sectionId = moduleRow?.section_id;
-      if (!sectionKey && !sectionId) return;
+      console.log("[badge] module:", moduleId, "sectionKey:", sectionKey, "sectionId:", sectionId);
+      if (!sectionKey && !sectionId) { console.log("[badge] no section info, aborting"); return; }
+      if (!sectionKey) { console.log("[badge] no section_key, aborting"); return; }
 
       let modulesQuery = supabase.from("collection_modules").select("id");
       if (sectionId) modulesQuery = modulesQuery.eq("section_id", sectionId);
       else modulesQuery = modulesQuery.eq("section_key", sectionKey);
-      if (!sectionKey) {
-        console.log("Step 2 - No section_key found for module:", moduleId);
-        return;
-      }
 
-      const { count: totalCount, error: totalErr } = await supabase
-        .from("collection_modules")
-        .select("id", { count: "exact", head: true })
-        .eq("section_key", sectionKey);
-      if (totalErr) {
-        console.error(
-          "Step 3 - Count total modules failed:",
-          totalErr?.message || totalErr,
-        );
-        throw totalErr;
-      }
-
-      const { data: sectionModules, error: sectionModulesErr } =
-        await modulesQuery;
+      const { data: sectionModules, error: sectionModulesErr } = await modulesQuery;
       if (sectionModulesErr) throw sectionModulesErr;
 
-      const sectionModuleIds = (sectionModules ?? []).map(
-        (row: { id: string }) => row.id,
-      );
-      if (sectionModuleIds.length === 0) return;
+      const sectionModuleIds = (sectionModules ?? []).map((row: { id: string }) => row.id);
+      console.log("[badge] total modules in section:", sectionModuleIds.length);
+      if (sectionModuleIds.length === 0) { console.log("[badge] no modules found, aborting"); return; }
 
       const { data: completedRows, error: completedErr } = await supabase
         .from("user_collection_module_progress")
@@ -1023,100 +1068,76 @@ export default function Collections({
       if (completedErr) throw completedErr;
 
       const completedCount = (completedRows ?? []).length;
-      if (completedCount !== sectionModuleIds.length) return;
-
-      console.log(
-        `Section: ${sectionKey}, Total: ${totalCount}, Completed: ${completedCount}`,
-      );
-      if (!totalCount || completedCount !== totalCount) {
-        console.log("Not all modules completed yet");
-        return;
-      }
+      console.log("[badge] completed:", completedCount, "/", sectionModuleIds.length);
+      if (completedCount !== sectionModuleIds.length) { console.log("[badge] not all done yet, aborting"); return; }
 
       const { data: badgeRows, error: badgeLookupErr } = await supabase
         .from("collection_badges")
         .select("id, label, image_url")
         .eq("section_key", sectionKey)
         .limit(1);
-      if (badgeLookupErr) {
-        console.error(
-          "Step 5 - Lookup badge failed:",
-          badgeLookupErr?.message || badgeLookupErr,
-        );
-        throw badgeLookupErr;
-      }
+      if (badgeLookupErr) { console.error("[badge] Step 5 failed:", badgeLookupErr?.message); throw badgeLookupErr; }
 
       const badgeRow = badgeRows?.[0];
-      if (!badgeRow) {
-        console.log("No badge found for section:", sectionKey);
-        return;
-      }
+      console.log("[badge] badge row from DB:", badgeRow);
 
-      const badgeId = badgeRow.id;
-      console.log("Unlocking badge:", badgeId, "for section:", sectionKey);
-      const { error: badgeErr } = await supabase.from("user_badges").upsert(
-        {
-          user_id: userId,
-          badge_id: badgeId,
-          unlocked_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,badge_id", ignoreDuplicates: true },
-      );
-      if (badgeErr) {
-        console.error(
-          "Step 6 - Upsert user_badges failed:",
-          badgeErr?.message || badgeErr,
+      // If no badge in DB, use frontend fallback mapping
+      const fallbackBadgeMap: Record<string, { label: string; image_url: string }> = {
+        "foundation":                          { label: "Foundation",       image_url: "/images/Foundation.png" },
+        "command-line":                        { label: "Command Line",     image_url: "/images/Command%20Line.png" },
+        "cpu-scheduling":                      { label: "Scheduling",       image_url: "/images/Scheduling.png" },
+        "thread-management":                   { label: "Concurrency",      image_url: "/images/Concurrency.png" },
+        "memory-management-virtual-memory":    { label: "Memory",           image_url: "/images/Memory.png" },
+        "protection-security":                 { label: "Interview - Ready",image_url: "/images/Interview%20-%20Ready.png" },
+      };
+
+      const resolvedBadge = badgeRow ?? (sectionKey ? { id: `fallback-${sectionKey}`, ...fallbackBadgeMap[sectionKey] } : null);
+      console.log("[badge] resolved badge:", resolvedBadge);
+      if (!resolvedBadge?.label) { console.log("[badge] no badge for section_key:", sectionKey); return; }
+
+      const badgeId = (badgeRow?.id) ?? `fallback-${sectionKey}`;
+
+      // Only upsert to user_badges if we have a real DB badge (not a fallback)
+      if (badgeRow?.id) {
+        const { error: badgeErr } = await supabase.from("user_badges").upsert(
+          { user_id: userId, badge_id: badgeId, unlocked_at: new Date().toISOString() },
+          { onConflict: "user_id,badge_id", ignoreDuplicates: true },
         );
-        throw badgeErr;
+        if (badgeErr) { console.error("[badge] Step 6 upsert failed:", badgeErr?.message); throw badgeErr; }
       }
 
       // Update profiles.badges JSONB column
-      try {
-        const { data: profileData } = await supabase
-          .from("profiles")
-          .select("badges")
-          .eq("id", userId)
-          .maybeSingle();
+      const { data: profileData } = await supabase
+        .from("profiles")
+        .select("badges")
+        .eq("id", userId)
+        .maybeSingle();
 
-        const currentBadges = profileData?.badges ?? [];
-        
-        // Check if badge already exists in profiles.badges
-        const badgeExists = currentBadges.some((b: any) => b.id === badgeId);
-        
-        if (!badgeExists) {
-          const newBadge = {
-            id: badgeId,
-            badge_name: badgeRow.label,
-            badge_icon: badgeRow.image_url,
-            unlocked_at: new Date().toISOString(),
-          };
-          
-          const updatedBadges = [...currentBadges, newBadge];
-          
-          const { error: profileErr } = await supabase
-            .from("profiles")
-            .update({ badges: updatedBadges })
-            .eq("id", userId);
-          
-          if (profileErr) {
-            console.error(
-              "Failed to update profiles.badges:",
-              profileErr?.message || profileErr,
-            );
-          } else {
-            console.log("Badge added to profiles.badges successfully!");
-          }
+      const currentBadges = profileData?.badges ?? [];
+      const badgeExists = currentBadges.some((b: any) => b.id === badgeId);
+
+      if (!badgeExists) {
+        const newBadge = {
+          id: badgeId,
+          badge_name: resolvedBadge.label,
+          badge_icon: resolvedBadge.image_url,
+          unlocked_at: new Date().toISOString(),
+        };
+        const { error: profileErr } = await supabase
+          .from("profiles")
+          .update({ badges: [...currentBadges, newBadge] })
+          .eq("id", userId);
+
+        if (profileErr) {
+          console.error("[badge] profiles.badges update failed:", profileErr?.message);
+          return;
         }
-      } catch (err) {
-        console.error("Failed to update profiles.badges:", err);
       }
 
-      console.log("Badge unlocked successfully!");
+      // Always play the animation when section is fully completed
+      setUnlockAnim({ icon: resolvedBadge.image_url, name: resolvedBadge.label });
     } catch (err) {
-      console.error(
-        "Failed to unlock section badge:",
-        err instanceof Error ? err.message : String(err),
-      );
+      console.error("[badge] unlockBadgeForCompletedSection error:", err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -1639,34 +1660,7 @@ export default function Collections({
                   onClick={pickRandomProblem}
                   className="h-11 w-full rounded-2xl border border-white/10 bg-[#121417] px-4 text-sm text-zinc-200 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 whitespace-nowrap md:col-span-4"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="h-4 w-4"
-                    fill="none"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M16 4h4v4"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M4 18l6-6m0 0 3-3a3 3 0 0 1 4.2 0L20 12"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M4 6l4 4m0 0 2 2"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <img src="/images/dice.svg" alt="" className="h-4 w-4" aria-hidden="true" />
                   Random Problem
                 </button>
               </div>
@@ -1968,13 +1962,16 @@ export default function Collections({
                             );
                           }}
                           disabled={sectionSolved < sectionItems.length}
-                          className={`inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm transition-colors ${
+                          className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm transition-colors ${
                             sectionSolved === sectionItems.length && sectionItems.length > 0
                               ? "border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"
                               : "border-gray-500/40 bg-gray-500/10 text-gray-400 cursor-not-allowed opacity-50"
                           }`}
                           title={sectionSolved < sectionItems.length ? "Complete all questions in this section first" : ""}
                         >
+                          {earnedInterviewCerts.has(section.title || humanizeSectionTitle(section.sectionKey)) && (
+                            <span className="text-emerald-400 text-base leading-none">✓</span>
+                          )}
                           Mock Interview
                         </button>
                       </div>
@@ -2265,9 +2262,14 @@ export default function Collections({
           topic={topic || undefined}
           mode={panelMode}
           moduleId={activeModuleId || undefined}
-          onSolveComplete={(moduleId) => {
+          onSolveComplete={(moduleId: string) => {
             // Automatically mark as completed when solve finishes
             toggleDone(moduleId);
+          }}
+          onInterviewComplete={(completedTopic: string) => {
+            awardInterviewCertification(completedTopic);
+            setEarnedInterviewCerts((prev) => new Set(prev).add(completedTopic));
+            setCertAnim(`${completedTopic} — Mock Interview`);
           }}
           onClose={() => {
             setMockDifficulty(null);
@@ -2572,6 +2574,19 @@ export default function Collections({
             </div>
           </div>
         </div>
+      )}
+      {unlockAnim && (
+        <BadgeUnlockAnimation
+          badgeIcon={unlockAnim.icon}
+          badgeName={unlockAnim.name}
+          onDone={() => setUnlockAnim(null)}
+        />
+      )}
+      {certAnim && (
+        <CertUnlockAnimation
+          certTitle={certAnim}
+          onDone={() => setCertAnim(null)}
+        />
       )}
     </section>
   );

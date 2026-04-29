@@ -23,6 +23,7 @@ export default function MockInterviewPanel({
   mode = "interview",
   moduleId,
   onSolveComplete,
+  onInterviewComplete,
 }) {
   const [history, setHistory] = useState([]);
   const historyRef = useRef([]);
@@ -1073,6 +1074,7 @@ Output Format:
       topic={topic}
       onClose={onClose}
       moduleId={moduleId}
+      onInterviewComplete={onInterviewComplete}
     />
   );
 }
