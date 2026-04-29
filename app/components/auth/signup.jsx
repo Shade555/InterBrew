@@ -229,7 +229,7 @@ export default function SignupComponent() {
                       as="button"
                       type="submit"
                       color="#3f9371"
-                      speed="5s"
+                      speed="4s"
                       className="w-full flex justify-center py-2 px-4 text-sm font-medium rounded-full text-white"
                     >
                       Sign up
@@ -333,7 +333,7 @@ export default function SignupComponent() {
                     Welcome back
                   </h2>
                   <p className="mt-2 text-center text-sm text-gray-300">
-                    Don&apos;t have an account?{" "}
+                    Don't have an account?{" "}
                     <button
                       type="button"
                       onClick={() => setIsFlipped(false)}
@@ -410,7 +410,7 @@ export default function SignupComponent() {
                       as="button"
                       type="submit"
                       color="#3f9371"
-                      speed="5s"
+                      speed="4s"
                       className="w-full flex justify-center py-4 px-4 text-sm font-medium rounded-full text-white"
                     >
                       Sign in

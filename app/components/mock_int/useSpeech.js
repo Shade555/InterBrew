@@ -5,10 +5,16 @@ export function useSpeech(onTextExtracted) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
   const speakingRef = useRef(false);
+  const onTextExtractedRef = useRef(onTextExtracted);
+
+  useEffect(() => {
+    onTextExtractedRef.current = onTextExtracted;
+  }, [onTextExtracted]);
 
   useEffect(() => {
     // Check for browser support
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
@@ -17,10 +23,18 @@ export function useSpeech(onTextExtracted) {
 
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
-        onTextExtracted(transcript); // Send text back to UI
+        onTextExtractedRef.current?.(transcript); // Send text back to UI
+      };
+
+      recognition.onstart = () => {
+        setIsListening(true);
       };
 
       recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.onerror = () => {
         setIsListening(false);
       };
 
@@ -28,24 +42,24 @@ export function useSpeech(onTextExtracted) {
     } else {
       console.warn("Speech Recognition API not supported in this browser.");
     }
-  }, [onTextExtracted]);
+
+    return () => {
+      try {
+        recognitionRef.current?.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    };
+  }, []);
 
   const startListening = () => {
     if (recognitionRef.current) {
+      if (isListening) return;
       try {
-        // Ensure it's stopped before starting fresh
-        recognitionRef.current.stop();
-      } catch (e) {}
-      
-      setTimeout(() => {
-        try {
-          recognitionRef.current.start();
-          setIsListening(true);
-        } catch (e) {
-          console.error("Error starting listening:", e);
-          setIsListening(false);
-        }
-      }, 100);
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error("Error starting listening:", e);
+        setIsListening(false);
+      }
     }
   };
 
@@ -64,10 +78,12 @@ export function useSpeech(onTextExtracted) {
     return new Promise((resolve, reject) => {
       try {
         if (!window.speechSynthesis) {
-          return reject(new Error('SpeechSynthesis API not available'));
+          return reject(new Error("SpeechSynthesis API not available"));
         }
         // Cancel any ongoing speech before starting a new one
-        try { window.speechSynthesis.cancel(); } catch (e) {}
+        try {
+          window.speechSynthesis.cancel();
+        } catch (e) {}
         speakingRef.current = true;
         const utterance = new SpeechSynthesisUtterance(text);
         // Optional: tweak voice settings here (pitch, rate, specific voices)
@@ -79,14 +95,19 @@ export function useSpeech(onTextExtracted) {
         utterance.onerror = (ev) => {
           speakingRef.current = false;
           // Normalize to an Error with useful text so callers get readable messages
-          const msg = (ev && (ev.error || ev.type)) ? String(ev.error || ev.type) : 'unknown speech synthesis error';
-          reject(new Error('SpeechSynthesisUtterance error: ' + msg));
+          const msg =
+            ev && (ev.error || ev.type)
+              ? String(ev.error || ev.type)
+              : "unknown speech synthesis error";
+          reject(new Error("SpeechSynthesisUtterance error: " + msg));
         };
         try {
           window.speechSynthesis.speak(utterance);
         } catch (e) {
           speakingRef.current = false;
-          reject(new Error('speechSynthesis.speak threw: ' + (e?.message ?? e)));
+          reject(
+            new Error("speechSynthesis.speak threw: " + (e?.message ?? e)),
+          );
         }
       } catch (e) {
         reject(e);

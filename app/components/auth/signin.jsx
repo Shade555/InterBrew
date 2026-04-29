@@ -1,13 +1,11 @@
 "use client";
 import StarBorder from "../../../components/StarBorder";
-import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function SigninComponent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/dashboard";
 
   const [formData, setFormData] = useState({
     email: "",
@@ -23,15 +21,11 @@ export default function SigninComponent() {
     });
 
     if (error) {
-      if (error.message === "Email not confirmed") {
-        alert("Please check your email and click the confirmation link to activate your account. Also check your spam folder.");
-      } else {
-        alert(error.message);
-      }
+      alert(error.message);
       return;
     }
 
-    router.push(redirectTo);
+    router.push("/dashboard"); // change if needed
   };
 
   const handleChange = (e) => {
@@ -132,7 +126,7 @@ export default function SigninComponent() {
               as="button"
               type="submit"
               color="#3f9371"
-              speed="20s"
+              speed="4s"
               className="w-full flex justify-center py-2 px-4 text-sm font-medium rounded-full text-white bg-emerald-500 hover:bg-emerald-600 transition-colors duration-200"
             >
               Sign in

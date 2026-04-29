@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import GlobalShell from "./components/navigation/GlobalShell";
+import Head from "next/head";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { initializeServices } from "@/lib/init";
+
+// Initialize background services (email reminders, etc.)
+initializeServices();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,11 +30,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en">
+      <Head>
+        <link
+          href="https://fonts.googleapis.com/icon?family=Material+Icons"
+          rel="stylesheet"
+        />
+      </Head>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        <TooltipProvider>
+          <GlobalShell>{children}</GlobalShell>
+        </TooltipProvider>
+      </body>
     </html>
   );
 }
