@@ -849,7 +849,7 @@ export default function Dashboard() {
         </div>
 
         {/* Right Column - AI Report */}
-        <div className="rounded-2xl border border-white/10 bg-[#111214] px-4 py-4">
+        <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-zinc-100">AI Report</h2>
             {/* Regenerate Button */}
@@ -867,19 +867,19 @@ export default function Dashboard() {
               ♻️
             </button>
           </div>
-          <div className="flex flex-col items-center justify-center gap-3">
+          <div className="flex flex-col lg:flex-row items-center justify-start gap-6">
             {loadingAiReport ? (
-              <div className="flex flex-col items-center justify-center gap-3 h-32">
+              <div className="flex flex-col items-center justify-center gap-3 h-48">
                 <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
                 <p className="text-xs text-zinc-400">Analyzing...</p>
               </div>
             ) : (
               <>
-                {/* Score Ring */}
-                <div className="relative w-32 h-32">
+                {/* Score Ring - Left Side */}
+                <div className="relative w-48 h-48 flex-shrink-0">
                   <svg
-                    width="130"
-                    height="130"
+                    width="192"
+                    height="192"
                     viewBox="0 0 200 200"
                     className="drop-shadow-lg"
                   >
@@ -920,7 +920,7 @@ export default function Dashboard() {
                   </svg>
                   {/* Center Text */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-3xl font-bold text-emerald-400">
+                    <span className="text-5xl font-bold text-emerald-400">
                       {aiScore}
                     </span>
                     <span className="text-[10px] text-zinc-400 uppercase tracking-wide">
@@ -929,10 +929,12 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Message */}
-                <p className="text-center text-zinc-300 text-xs max-w-xs leading-relaxed">
-                  {recommendation}
-                </p>
+                {/* Report Message - Right Side */}
+                <div className="flex-1">
+                  <p className="text-zinc-300 text-sm leading-relaxed">
+                    {recommendation}
+                  </p>
+                </div>
               </>
             )}
           </div>
