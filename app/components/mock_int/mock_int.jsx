@@ -22,6 +22,7 @@ export default function MockInterviewPanel({
   topic,
   mode = "interview",
   moduleId,
+  onSolveComplete,
 }) {
   const [history, setHistory] = useState([]);
   const historyRef = useRef([]);
@@ -401,6 +402,10 @@ export default function MockInterviewPanel({
     const nextIndex = solveIndex + 1;
     setSolveAnswer("");
     if (nextIndex >= solveQuestions.length) {
+      // Call the onSolveComplete callback to mark as done in Collections
+      if (onSolveComplete && moduleId) {
+        onSolveComplete(moduleId);
+      }
       onClose?.();
       return;
     }

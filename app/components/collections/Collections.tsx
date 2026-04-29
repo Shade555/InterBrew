@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import MockInterviewPanel from "../mock_int/mock_int.jsx";
 import { supabase } from "../../../lib/supabaseClient";
 
@@ -543,6 +544,9 @@ export default function Collections({
   const [sections, setSections] = useState<SectionItem[]>([]);
   const [items, setItems] = useState<ModuleItem[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>("User");
+  const [badgeCount, setBadgeCount] = useState<number>(0);
+  const router = useRouter();
   const [dataError, setDataError] = useState<string>("");
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [youtubePopup, setYoutubePopup] = useState<{
@@ -611,6 +615,26 @@ export default function Collections({
         if (userErr) throw userErr;
         const currentUserId = user?.id ?? null;
         if (active) setUserId(currentUserId);
+
+        // Fetch user profile to get full name and badges
+        if (currentUserId) {
+          try {
+            const { data: profileData } = await supabase
+              .from("profiles")
+              .select("full_name, badges")
+              .eq("id", currentUserId)
+              .maybeSingle();
+            if (active && profileData?.full_name) {
+              setUserName(profileData.full_name);
+            }
+            if (active && profileData?.badges) {
+              const badgesArray = Array.isArray(profileData.badges) ? profileData.badges : [];
+              setBadgeCount(badgesArray.length);
+            }
+          } catch (err) {
+            console.warn("Failed to fetch user profile:", err);
+          }
+        }
 
         const { data: sectionsData, error: sectionsErr } = await supabase
           .from("collection_sections")
@@ -1011,7 +1035,7 @@ export default function Collections({
 
       const { data: badgeRows, error: badgeLookupErr } = await supabase
         .from("collection_badges")
-        .select("id")
+        .select("id, label, image_url")
         .eq("section_key", sectionKey)
         .limit(1);
       if (badgeLookupErr) {
@@ -1022,12 +1046,13 @@ export default function Collections({
         throw badgeLookupErr;
       }
 
-      const badgeId = badgeRows?.[0]?.id;
-      if (!badgeId) {
+      const badgeRow = badgeRows?.[0];
+      if (!badgeRow) {
         console.log("No badge found for section:", sectionKey);
         return;
       }
 
+      const badgeId = badgeRow.id;
       console.log("Unlocking badge:", badgeId, "for section:", sectionKey);
       const { error: badgeErr } = await supabase.from("user_badges").upsert(
         {
@@ -1043,6 +1068,47 @@ export default function Collections({
           badgeErr?.message || badgeErr,
         );
         throw badgeErr;
+      }
+
+      // Update profiles.badges JSONB column
+      try {
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("badges")
+          .eq("id", userId)
+          .maybeSingle();
+
+        const currentBadges = profileData?.badges ?? [];
+        
+        // Check if badge already exists in profiles.badges
+        const badgeExists = currentBadges.some((b: any) => b.id === badgeId);
+        
+        if (!badgeExists) {
+          const newBadge = {
+            id: badgeId,
+            badge_name: badgeRow.label,
+            badge_icon: badgeRow.image_url,
+            unlocked_at: new Date().toISOString(),
+          };
+          
+          const updatedBadges = [...currentBadges, newBadge];
+          
+          const { error: profileErr } = await supabase
+            .from("profiles")
+            .update({ badges: updatedBadges })
+            .eq("id", userId);
+          
+          if (profileErr) {
+            console.error(
+              "Failed to update profiles.badges:",
+              profileErr?.message || profileErr,
+            );
+          } else {
+            console.log("Badge added to profiles.badges successfully!");
+          }
+        }
+      } catch (err) {
+        console.error("Failed to update profiles.badges:", err);
       }
 
       console.log("Badge unlocked successfully!");
@@ -1901,7 +1967,13 @@ export default function Collections({
                                 humanizeSectionTitle(section.sectionKey),
                             );
                           }}
-                          className="inline-flex h-10 items-center justify-center rounded-md border border-blue-500/40 bg-blue-500/10 px-4 text-sm text-blue-300 hover:bg-blue-500/20 transition-colors"
+                          disabled={sectionSolved < sectionItems.length}
+                          className={`inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm transition-colors ${
+                            sectionSolved === sectionItems.length && sectionItems.length > 0
+                              ? "border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"
+                              : "border-gray-500/40 bg-gray-500/10 text-gray-400 cursor-not-allowed opacity-50"
+                          }`}
+                          title={sectionSolved < sectionItems.length ? "Complete all questions in this section first" : ""}
                         >
                           Mock Interview
                         </button>
@@ -1943,14 +2015,15 @@ export default function Collections({
               />
               <div>
                 <div className="text-xl font-semibold text-zinc-100">
-                  Anzila
+                  {userName}
                 </div>
-                <div className="text-sm text-zinc-300">Level 5</div>
+                <div className="text-sm text-zinc-300">{badgeCount} Badge{badgeCount !== 1 ? 's' : ''}</div>
               </div>
             </div>
 
             <button
               type="button"
+              onClick={() => router.push("/profile")}
               className="mt-4 w-full rounded-md border border-white/15 bg-white/5 py-2 text-sm text-zinc-100 hover:bg-white/10 transition-colors"
             >
               View Profile
@@ -2192,6 +2265,10 @@ export default function Collections({
           topic={topic || undefined}
           mode={panelMode}
           moduleId={activeModuleId || undefined}
+          onSolveComplete={(moduleId) => {
+            // Automatically mark as completed when solve finishes
+            toggleDone(moduleId);
+          }}
           onClose={() => {
             setMockDifficulty(null);
             setTopic(null);

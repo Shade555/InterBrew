@@ -226,7 +226,7 @@ export default function SettingsCard() {
       <div className="space-y-1.5 flex-1">
         <button
           onClick={() => setShowEditModal(true)}
-          className="w-full flex items-center justify-center gap-2 py-1.5 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 hover:from-amber-500/30 hover:to-yellow-500/30 text-amber-300 rounded-lg border border-amber-500/30 hover:border-amber-400/50 transition-all text-sm"
+          className="w-full flex items-center justify-center gap-2 py-1.5 bg-linear-to-r from-amber-500/20 to-yellow-500/20 hover:from-amber-500/30 hover:to-yellow-500/30 text-amber-300 rounded-lg border border-amber-500/30 hover:border-amber-400/50 transition-all text-sm"
         >
           <Edit3 className="w-3.5 h-3.5" />
           Edit Profile
@@ -234,7 +234,7 @@ export default function SettingsCard() {
 
         <button
           onClick={() => setShowDeleteConfirm(true)}
-          className="w-full flex items-center justify-center gap-2 py-1.5 bg-gradient-to-r from-red-500/20 to-rose-500/20 hover:from-red-500/30 hover:to-rose-500/30 text-red-300 rounded-lg border border-red-500/30 hover:border-red-400/50 transition-all text-sm"
+          className="w-full flex items-center justify-center gap-2 py-1.5 bg-linear-to-r from-red-500/20 to-rose-500/20 hover:from-red-500/30 hover:to-rose-500/30 text-red-300 rounded-lg border border-red-500/30 hover:border-red-400/50 transition-all text-sm"
         >
           <Trash2 className="w-3.5 h-3.5" />
           Delete Profile
@@ -245,7 +245,7 @@ export default function SettingsCard() {
       <div className="mt-auto pt-2 border-t border-white/10">
         <button
           onClick={handleSignOut}
-          className="w-full flex items-center justify-center gap-2 py-1.5 bg-gradient-to-r from-emerald-500/10 to-green-500/10 hover:from-emerald-500/20 hover:to-green-500/20 text-emerald-300 rounded-lg border border-emerald-500/20 hover:border-emerald-400/40 transition-all text-sm"
+          className="w-full flex items-center justify-center gap-2 py-1.5 bg-linear-to-r from-emerald-500/10 to-green-500/10 hover:from-emerald-500/20 hover:to-green-500/20 text-emerald-300 rounded-lg border border-emerald-500/20 hover:border-emerald-400/40 transition-all text-sm"
         >
           <LogOut className="w-3.5 h-3.5" />
           Sign Out
@@ -254,7 +254,7 @@ export default function SettingsCard() {
 
       {/* Edit Profile Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="bg-gray-900 border border-yellow-500/30 rounded-xl p-5 w-full max-w-md mx-4 shadow-2xl shadow-yellow-500/10">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-white text-lg font-semibold flex items-center gap-2">
@@ -336,7 +336,7 @@ export default function SettingsCard() {
                     ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
                     : saveStatus === 'success'
                       ? 'bg-green-600 text-white hover:bg-green-700 cursor-pointer'
-                      : 'bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black shadow-lg shadow-yellow-500/20 cursor-pointer'
+                      : 'bg-linear-to-r from-yellow-500 to-amber-500 hover:from-yellow-400 hover:to-amber-400 text-black shadow-lg shadow-yellow-500/20 cursor-pointer'
                 }`}
               >
                 {loading ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { GraduationCap, Calendar, ExternalLink, Award, Zap, Star, Shield, Rocket } from "lucide-react";
 
@@ -8,6 +8,7 @@ export default function CertificationsCard() {
   const [user, setUser] = useState(null);
   const [certifications, setCertifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const awardsAttempted = useRef(false);
 
   // Fetch certifications once component mounts
   useEffect(() => {
@@ -40,6 +41,12 @@ export default function CertificationsCard() {
 
         const interviewsThisWeek = dashboardRes.data?.this_week?.interviews || 0;
         
+        // Only attempt to award once per component mount (prevents React StrictMode double-runs)
+        if (awardsAttempted.current) {
+          return;
+        }
+        awardsAttempted.current = true;
+        
         // Auto-award milestone certifications
         const milestones = [
           { condition: true, title: "First Login 🎉", issuer: "Neofuture" },
@@ -48,15 +55,16 @@ export default function CertificationsCard() {
 
         for (const milestone of milestones) {
           if (milestone.condition) {
-            // Check if already awarded
-            const existing = await supabase
+            // Check if already awarded - use maybeSingle to avoid errors
+            const { data: existing } = await supabase
               .from("certifications")
               .select("id")
               .eq("user_id", authData.user.id)
               .eq("title", milestone.title)
-              .single();
+              .maybeSingle();
             
-            if (!existing.data) {
+            // Only insert if it doesn't already exist
+            if (!existing) {
               console.log(`Awarding ${milestone.title}`);
               await supabase
                 .from("certifications")
@@ -140,13 +148,13 @@ export default function CertificationsCard() {
           <p className="text-gray-500 text-xs mt-1">Add your certifications to showcase your skills</p>
         </div>
       ) : (
-        <div className="space-y-3 overflow-y-auto max-h-[200px] pr-1">
+        <div className="space-y-3 overflow-y-auto max-h-50 pr-1">
           {certifications.map((cert, index) => {
             const colorVariant = getCertColor(index);
             return (
               <div 
                 key={cert.id} 
-                className={`bg-gradient-to-r ${colorVariant.bg} to-transparent rounded-lg p-3 border border-white/10 ${colorVariant.border} transition-all group`}
+                className={`bg-linear-to-r ${colorVariant.bg} to-transparent rounded-lg p-3 border border-white/10 ${colorVariant.border} transition-all group`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">

@@ -20,7 +20,14 @@ export default function BadgesCard() {
       }
 
       try {
-        const { data: authData } = await supabase.auth.getUser();
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        
+        if (authError) {
+          console.error("Auth error:", authError.message);
+          setBadges([]);
+          setLoading(false);
+          return;
+        }
         
         // If no user, show empty state
         if (!authData?.user) {
@@ -31,61 +38,31 @@ export default function BadgesCard() {
         
         setUser(authData.user);
 
-        // Fetch BOTH badges AND streak in parallel
-        const [badgesRes, streakRes] = await Promise.all([
-          supabase
-            .from("user_badges")
-            .select(`
-              *,
-              collection_badges (
-                name,
-                badge_icon,
-                description
-              )
-            `)
-            .eq("user_id", authData.user.id),
-          supabase
-            .from("user_dashboards")
-            .select("streak")
-            .eq("user_id", authData.user.id)
-            .single()
-        ]);
+        // Fetch badges from profiles table
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select("badges")
+          .eq("id", authData.user.id)
+          .maybeSingle();
 
-        // Process badges
-        if (badgesRes.error) {
-          console.error("Error fetching user badges:", badgesRes.error.message);
+        if (profileError) {
+          console.error("Error fetching profile badges:", profileError.message);
+          setBadges([]);
         } else {
-          const transformedBadges = badgesRes.data?.map(item => ({
-            id: item.id,
-            badge_name: item.collection_badges?.name || 'Unnamed Badge',
-            badge_icon: item.collection_badges?.badge_icon,
-            unlocked_at: item.unlocked_at
-          })) || [];
+          // Get badges array from profile
+          const userBadges = profileData?.badges || [];
+          
+          // Ensure it's an array and has the expected structure
+          const transformedBadges = Array.isArray(userBadges) 
+            ? userBadges.map((badge, idx) => ({
+                id: badge.id || `badge-${idx}`,
+                badge_name: badge.badge_name || badge.name || 'Unnamed Badge',
+                badge_icon: badge.badge_icon || badge.icon,
+                unlocked_at: badge.unlocked_at
+              }))
+            : [];
+          
           setBadges(transformedBadges);
-        }
-
-        // Auto-award streak badges
-        const streak = streakRes.data?.streak || 0;
-        console.log(`Current streak: ${streak} days`);
-        
-        const streakBadges = [
-          { streak: 1, name: '1-Day Streak 🔥', icon: '🔥' },
-          { streak: 7, name: '7-Day Streak 🥈', icon: '🥈' },
-          { streak: 30, name: '30-Day Streak 🥇', icon: '🥇' }
-        ];
-
-        for (const badge of streakBadges) {
-          if (streak >= badge.streak) {
-            // Check if user already has this badge
-            const existing = badgesRes.data?.some(item => 
-              item.collection_badges?.name?.includes(badge.name)
-            );
-            
-            if (!existing) {
-              console.log(`Awarding ${badge.name}`);
-              // TODO: Insert into user_badges (needs collection_badges IDs)
-            }
-          }
         }
       } catch (err) {
         console.error("Exception fetching badges:", err);
@@ -177,23 +154,24 @@ export default function BadgesCard() {
           <p className="text-gray-500 text-xs">Complete interviews to earn badges!</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-8 gap-1">
           {badges.map((badge, index) => (
             <div
               key={badge.id}
-              className={`bg-linear-to-br ${getBadgeColor(badge.badge_name, index)} rounded-xl p-4 border transition-all hover:scale-105 hover:shadow-lg hover:shadow-purple-500/20`}
+              className="bg-black/40 rounded-sm p-0.5 border border-white/10 transition-all hover:scale-125 hover:shadow-lg hover:shadow-white/10 aspect-square flex flex-col items-center justify-center"
             >
-              <div className="flex flex-col items-center text-center gap-2">
-                <div className="w-12 h-12 rounded-full bg-black/30 flex items-center justify-center">
-                  {badge.badge_icon ? (
-                    <span className="text-2xl">{badge.badge_icon}</span>
+              <div className="flex flex-col items-center text-center gap-0 w-full h-full justify-center">
+                <div className="w-15 h-15 rounded-full bg-black/60 flex items-center justify-center overflow-hidden">
+                  {badge.badge_icon && (badge.badge_icon.includes('/') || badge.badge_icon.includes('.')) ? (
+                    <img 
+                      src={badge.badge_icon} 
+                      alt={badge.badge_name}
+                      className="w-full h-full object-contain"
+                    />
                   ) : (
                     getBadgeIcon(badge.badge_name, index)
                   )}
                 </div>
-                <span className="text-white text-sm font-medium truncate w-full">
-                  {badge.badge_name}
-                </span>
               </div>
             </div>
           ))}

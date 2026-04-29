@@ -35,7 +35,7 @@ export default function SignupComponent() {
       // Log the full response for debugging
       console.log("Signup response:", { data, error });
 
-      // Handle the specific case where user is created but there's a database trigger error
+      // Handle errors
       if (error) {
         console.error("Signup error details:", {
           message: error.message,
@@ -43,17 +43,13 @@ export default function SignupComponent() {
           name: error.name,
         });
 
-        // If user was still created despite the error, proceed with success
-        if (data?.user) {
-          console.warn("User created despite error - likely a trigger issue");
-          alert(
-            "Account created! Please check your email to confirm. (Note: Some profile features may need setup)",
-          );
-          router.push("/dashboard");
+        // Check if user already exists
+        if (error.message.includes("already registered") || error.message.includes("User already exists")) {
+          alert("User already exists. Please sign in instead.");
           return;
         }
 
-        // Otherwise show the error
+        // Show any other error
         alert(error.message);
         return;
       }
