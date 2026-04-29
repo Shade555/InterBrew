@@ -244,7 +244,7 @@ function Calendar() {
   return (
     <div
       ref={containerRef}
-      className="relative rounded-2xl border border-white/10 bg-[#111214] p-4 text-white"
+      className="relative rounded-2xl border border-white/10 bg-[#111214] p-4 text-white h-full"
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -565,23 +565,21 @@ export default function Dashboard() {
   const [loadingAiReport, setLoadingAiReport] = useState(true);
   const [regeneratingReport, setRegeneratingReport] = useState(false);
   const [showGridLines, setShowGridLines] = useState(true);
-  const [yAxisMetric, setYAxisMetric] = useState<"improvement" | "accuracy" | "readiness">("improvement");
-  const [badges, setBadges] = useState<Array<any>>([]);
-  const [unlockedSections, setUnlockedSections] = useState<Record<string, boolean>>({});
-  const [loadingBadges, setLoadingBadges] = useState(true);
-  const [showCertificateModal, setShowCertificateModal] = useState(false);
+  const [activeGraphMetric, setActiveGraphMetric] = useState<"modules" | "readiness">("modules");
+  const [graphPoints, setGraphPoints] = useState<{ date: string; label: string; modules_completed: number; readiness_score: number | null }[]>([]);
+  const [loadingGraph, setLoadingGraph] = useState(true);
+  const [graphHoverIdx, setGraphHoverIdx] = useState<number | null>(null);
   const [currentModule, setCurrentModule] = useState<{ name: string; path: string } | null>(null);
   const [loadingCurrentModule, setLoadingCurrentModule] = useState(true);
 
-  // Sample data for the last 4 weeks
-  const graphData = [55, 62, 48, 65, 58, 72, 60, 78, 65, 82, 75, 88, 80, 92, 85, 95];
-  const weeks = ["Week 1", "Week 2", "Week 3", "Week 4"];
-  
-  const metricLabels = {
-    improvement: "Improvement Score",
-    accuracy: "Accuracy %",
-    readiness: "Readiness Score"
-  };
+  // Quick stats
+  const [streak, setStreak] = useState<number>(0);
+  const [totalXp, setTotalXp] = useState<number>(0);
+  const [modulesCompleted, setModulesCompleted] = useState<number>(0);
+  const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  // Graph data fetch removed — now handled by fetchGraph below
 
   // Fetch AI Report from Groq
   useEffect(() => {
@@ -658,317 +656,325 @@ export default function Dashboard() {
     }
   };
 
-  // Fetch badges from collections
+  // Fetch quick stats
   useEffect(() => {
-    const fetchBadges = async () => {
+    const fetchStats = async () => {
       try {
-        setLoadingBadges(true);
-        
-        // Get current user
-        const { data: { user }, error: userErr } = await supabase.auth.getUser();
-        if (userErr) throw userErr;
-        const userId = user?.id;
+        setLoadingStats(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const userId = user.id;
 
-        // Fetch all collection badges
-        const { data: badgesData, error: badgesErr } = await supabase
-          .from("collection_badges")
-          .select("id, label, image_url, section_key")
-          .order("order_number", { ascending: true });
-        
-        if (badgesErr) throw badgesErr;
-        setBadges(badgesData ?? []);
+        const [dashRes, profileRes, scenarioProgressRes, collectionProgressRes, lbRes] = await Promise.all([
+          supabase.from("user_dashboards").select("streak").eq("user_id", userId).maybeSingle(),
+          supabase.from("profiles").select("xp").eq("id", userId).maybeSingle(),
+          supabase.from("user_module_progress").select("module_id", { count: "exact", head: true }).eq("user_id", userId).eq("completed", true),
+          supabase.from("user_collection_module_progress").select("module_id", { count: "exact", head: true }).eq("user_id", userId).eq("completed", true),
+          supabase.from("leaderboard").select("user_id").order("total_score", { ascending: false }),
+        ]);
 
-        // Determine which batches are unlocked based on section completion
-        if (userId) {
-          const unlockedMap: Record<string, boolean> = {};
-          let anyUnlocked = false;
+        setStreak(dashRes.data?.streak ?? 0);
+        setTotalXp(Number(profileRes.data?.xp) || 0);
 
-          // For each badge, check if all modules in that section are completed
-          for (const badge of (badgesData ?? [])) {
-            // Count total modules in this section
-            const { count: totalCount, error: totalErr } = await supabase
-              .from("collection_modules")
-              .select("id", { count: "exact", head: true })
-              .eq("section_key", badge.section_key);
-            if (totalErr) continue;
+        const scenarioCount = (scenarioProgressRes as any).count ?? 0;
+        const collectionCount = (collectionProgressRes as any).count ?? 0;
+        setModulesCompleted(scenarioCount + collectionCount);
 
-            // Count user's completed modules in this section
-            const { count: completedCount, error: completedErr } = await supabase
-              .from("user_collection_module_progress")
-              .select("module_id, collection_modules!inner(section_key)", {
-                count: "exact",
-                head: true,
-              })
-              .eq("user_id", userId)
-              .eq("completed", true)
-              .eq("collection_modules.section_key", badge.section_key);
-            if (completedErr) continue;
-
-            // Unlock if all modules completed
-            const isUnlocked = totalCount && completedCount && completedCount === totalCount;
-            if (isUnlocked) {
-              unlockedMap[badge.section_key] = true;
-              anyUnlocked = true;
-            }
-          }
-
-          setUnlockedSections(unlockedMap);
-          console.log("Unlocked sections:", unlockedMap, "Any unlocked:", anyUnlocked);
+        if (lbRes.data) {
+          const rank = lbRes.data.findIndex((r: any) => r.user_id === userId);
+          setLeaderboardRank(rank >= 0 ? rank + 1 : null);
         }
-      } catch (err: any) {
-        console.error("Error fetching badges:", err?.message || err);
-        // Use placeholder badges on error
-        const placeholders = [
-          { id: "1", label: "Foundation", image_url: "/images/Foundation.png", section_key: "foundation" },
-          { id: "2", label: "Scheduling", image_url: "/images/Scheduling.png", section_key: "cpu-scheduling" },
-          { id: "3", label: "Concurrency", image_url: "/images/Concurrency.png", section_key: "thread-management" },
-        ];
-        setBadges(placeholders);
+      } catch (err) {
+        console.error("Error fetching stats:", err);
       } finally {
-        setLoadingBadges(false);
+        setLoadingStats(false);
       }
     };
-
-    fetchBadges();
+    fetchStats();
   }, []);
 
-  // Fetch current module from user_dashboard
+  // Fetch graph data: last 14 days of modules_completed + readiness scores
+  useEffect(() => {
+    const fetchGraph = async () => {
+      try {
+        setLoadingGraph(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        const [dashRes, aiRes] = await Promise.all([
+          supabase.from("user_dashboards").select("dashboard_graph").eq("user_id", user.id).maybeSingle(),
+          supabase.from("user_ai_reports").select("score, created_at").eq("user_id", user.id).order("created_at", { ascending: true }),
+        ]);
+
+        // Build last-14-days skeleton
+        const days = Array.from({ length: 14 }, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - (13 - i));
+          const date = d.toISOString().slice(0, 10);
+          const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          return { date, label, modules_completed: 0, readiness_score: null as number | null };
+        });
+
+        // Fill modules_completed from dashboard_graph
+        const stored: { date: string; modules_completed: number }[] =
+          Array.isArray(dashRes.data?.dashboard_graph) ? dashRes.data.dashboard_graph : [];
+        stored.forEach((entry) => {
+          const idx = days.findIndex((d) => d.date === entry.date);
+          if (idx >= 0) days[idx].modules_completed = entry.modules_completed || 0;
+        });
+
+        // Fill readiness_score: average score per day from user_ai_reports
+        const scoresByDay: Record<string, number[]> = {};
+        (aiRes.data || []).forEach((row: any) => {
+          const date = new Date(row.created_at).toISOString().slice(0, 10);
+          if (!scoresByDay[date]) scoresByDay[date] = [];
+          scoresByDay[date].push(Number(row.score));
+        });
+        days.forEach((d) => {
+          const scores = scoresByDay[d.date];
+          if (scores && scores.length > 0) {
+            d.readiness_score = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+          }
+        });
+
+        setGraphPoints(days);
+      } catch (err) {
+        console.error("Error fetching graph data:", err);
+      } finally {
+        setLoadingGraph(false);
+      }
+    };
+    fetchGraph();
+  }, []);
+
+  // Fetch last activity from profiles
   useEffect(() => {
     const fetchCurrentModule = async () => {
       try {
         setLoadingCurrentModule(true);
         const { data: { user }, error: userErr } = await supabase.auth.getUser();
         if (userErr) throw userErr;
-        const userId = user?.id;
+        if (!user) { setLoadingCurrentModule(false); return; }
 
-        if (!userId) {
-          setLoadingCurrentModule(false);
-          return;
-        }
-
-        const { data: dashboardData } = await supabase
-          .from("user_dashboard")
-          .select("current_module_name, current_module_path")
-          .eq("user_id", userId)
+        const { data: profileData } = await supabase
+          .from("profiles")
+          .select("last_activity")
+          .eq("id", user.id)
           .maybeSingle();
 
-        if (dashboardData?.current_module_name && dashboardData?.current_module_path) {
-          setCurrentModule({
-            name: dashboardData.current_module_name,
-            path: dashboardData.current_module_path,
-          });
+        if (profileData?.last_activity) {
+          const a = profileData.last_activity;
+          if (a.type === "scenario") {
+            setCurrentModule({
+              name: a.label,
+              path: `/scenario-practice`,
+            });
+          } else if (a.type === "collection_mock" || a.type === "collection_problem") {
+            setCurrentModule({
+              name: a.label,
+              path: `/collections`,
+            });
+          }
         }
       } catch (err) {
-        console.error("Error fetching current module:", err);
+        console.error("Error fetching last activity:", err);
       } finally {
         setLoadingCurrentModule(false);
       }
     };
-
     fetchCurrentModule();
   }, []);
 
-  // Generate SVG path for the graph
-  const generateGraphPath = () => {
-    const padding = 50;
-    const width = 380;
-    const height = 120;
-    const maxValue = 100;
-    
-    const xStep = width / (graphData.length - 1);
-    const points = graphData.map((value, i) => {
-      const x = padding + i * xStep;
-      const y = 135 - (value / maxValue) * height;
-      return `${x},${y}`;
-    });
-    
-    return points.join(" ");
-  };
-
   return (
     <section className="py-5">
-      {/* Top Section: 2-Column Grid - AI Report (Left) and Badges/Certificates (Right) */}
+      <style>{`
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(18px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes scaleIn {
+          from { opacity: 0; transform: scale(0.96); }
+          to   { opacity: 1; transform: scale(1); }
+        }
+        @keyframes ringDraw {
+          from { stroke-dashoffset: 339.3; }
+          to   { stroke-dashoffset: 0; }
+        }
+        @keyframes barGrow {
+          from { width: 0%; }
+        }
+        .dash-fade-up   { animation: fadeUp  0.45s cubic-bezier(0.22,1,0.36,1) both; }
+        .dash-fade-in   { animation: fadeIn  0.4s ease both; }
+        .dash-scale-in  { animation: scaleIn 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+        .dash-d1  { animation-delay: 0.05s; }
+        .dash-d2  { animation-delay: 0.12s; }
+        .dash-d3  { animation-delay: 0.20s; }
+        .dash-d4  { animation-delay: 0.28s; }
+        .dash-d5  { animation-delay: 0.36s; }
+        .dash-d6  { animation-delay: 0.44s; }
+      `}</style>
+
+      {/* Top Section: 2-Column Grid - AI Report (Left) and Quick Stats (Right) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 mb-4 auto-rows-max lg:auto-rows-fr">
-        {/* Left Column - AI Report */}
-        <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-8">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-base font-semibold text-zinc-100">
-              AI Report
-            </h2>
-            {/* Regenerate Button */}
+        {/* Left Column - AI Readiness Report */}
+        <div className="dash-fade-up dash-d1 rounded-2xl border border-white/10 bg-[#111214] px-6 py-8 flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-base font-semibold text-zinc-100">AI Readiness Report</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">Based on your recent activity</p>
+            </div>
             <button
               onClick={handleRegenerateReport}
               disabled={regeneratingReport || loadingAiReport}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-md border transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
                 regeneratingReport
-                  ? "border-yellow-400/70 bg-yellow-400/15 text-yellow-300 animate-pulse"
-                  : "border-white/15 bg-white/5 text-zinc-300 hover:bg-white/10"
+                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300 animate-pulse"
+                  : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-zinc-200"
               }`}
               aria-label="Regenerate AI report"
-              title="Regenerate report"
             >
-              ♻️
+              <svg className={`w-3 h-3 ${regeneratingReport ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M21 12a9 9 0 11-6.219-8.56" strokeLinecap="round"/>
+              </svg>
+              Refresh
             </button>
           </div>
-          <div className="flex flex-col items-center justify-center gap-6">
-            {loadingAiReport ? (
-              <div className="flex flex-col items-center justify-center gap-4 h-48">
-                <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-                <p className="text-sm text-zinc-400">Analyzing your progress...</p>
+
+          {loadingAiReport ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3">
+              <div className="w-7 h-7 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+              <p className="text-xs text-zinc-500">Analysing your progress...</p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-6">
+              {/* Score ring */}
+              <div className="relative shrink-0 w-32 h-32">
+                <svg width="128" height="128" viewBox="0 0 128 128">
+                  <defs>
+                    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#10b981" />
+                      <stop offset="100%" stopColor="#06b6d4" />
+                    </linearGradient>
+                  </defs>
+                  {/* Track */}
+                  <circle cx="64" cy="64" r="54" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" />
+                  {/* Progress */}
+                  <circle
+                    cx="64" cy="64" r="54" fill="none"
+                    stroke="url(#ringGrad)" strokeWidth="10"
+                    strokeDasharray={`${(aiScore / 100) * 339.3} 339.3`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 64 64)"
+                    className="transition-all duration-700"
+                    style={{ animation: "ringDraw 0.9s cubic-bezier(0.22,1,0.36,1) 0.3s both" }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-3xl font-bold text-emerald-400 leading-none">{aiScore}</span>
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5">score</span>
+                </div>
               </div>
-            ) : (
-              <>
-                {/* Score Ring */}
-                <div className="relative w-48 h-48">
-                  <svg
-                    width="200"
-                    height="200"
-                    viewBox="0 0 200 200"
-                    className="drop-shadow-lg"
-                  >
-                    {/* Background Circle */}
-                    <circle
-                      cx="100"
-                      cy="100"
-                      r="90"
-                      fill="none"
-                      stroke="rgba(255,255,255,0.08)"
-                      strokeWidth="14"
-                    />
-                    {/* Progress Circle */}
-                    <circle
-                      cx="100"
-                      cy="100"
-                      r="90"
-                      fill="none"
-                      stroke="url(#scoreGradient)"
-                      strokeWidth="14"
-                      strokeDasharray={`${(aiScore / 100) * 565.5} 565.5`}
-                      strokeLinecap="round"
-                      transform="rotate(-90 100 100)"
-                      className="transition-all duration-500"
-                    />
-                    <defs>
-                      <linearGradient
-                        id="scoreGradient"
-                        x1="0%"
-                        y1="0%"
-                        x2="100%"
-                        y2="100%"
-                      >
-                        <stop offset="0%" stopColor="#10b981" />
-                        <stop offset="100%" stopColor="#06b6d4" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  {/* Center Text */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-4xl font-bold text-emerald-400">
-                      {aiScore}
-                    </span>
-                    <span className="text-xs text-zinc-400 uppercase tracking-wide">
-                      Ready
-                    </span>
-                  </div>
+
+              {/* Right side: label + recommendation + rating bar */}
+              <div className="flex-1 min-w-0">
+                {/* Rating label */}
+                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mb-3 border ${
+                  aiScore >= 80 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                  : aiScore >= 60 ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
+                  : aiScore >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                  : "bg-rose-500/15 border-rose-500/30 text-rose-300"
+                }`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                  {aiScore >= 80 ? "Interview Ready" : aiScore >= 60 ? "On Track" : aiScore >= 40 ? "Needs Work" : "Just Starting"}
                 </div>
 
-                {/* Message */}
-                <p className="text-center text-zinc-300 text-sm max-w-xs leading-relaxed">
-                  {recommendation}
-                </p>
-              </>
-            )}
-          </div>
-        </div>
+                {/* Recommendation */}
+                <p className="text-sm text-zinc-300 leading-relaxed line-clamp-4">{recommendation}</p>
 
-        {/* Right Column - Badges & Certificates (Stacked) */}
-        <div className="flex flex-col gap-4">
-          {/* Badges Card */}
-          <div className="flex-1 rounded-2xl border border-white/10 bg-[#111214] px-6 py-6 flex flex-col">
-            <h2 className="text-base font-semibold text-zinc-100 mb-4">
-              Badges
-            </h2>
-            <div className="flex gap-3 flex-wrap">
-              {loadingBadges ? (
-                <p className="text-zinc-400 text-sm">Loading badges...</p>
-              ) : badges.filter(b => unlockedSections[b.section_key]).length > 0 ? (
-                badges
-                  .filter(b => unlockedSections[b.section_key])
-                  .map((badge) => (
+                {/* Score bar */}
+                <div className="mt-4">
+                  <div className="flex justify-between text-[10px] text-zinc-600 mb-1">
+                    <span>0</span><span>50</span><span>100</span>
+                  </div>
+                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
                     <div
-                      key={badge.id}
-                      className="group relative flex justify-center"
-                    >
-                      <img
-                        src={badge.image_url || "/images/placeholder.png"}
-                        alt={badge.label}
-                        className="h-20 w-20 object-contain rounded-lg border border-white/10 bg-white/5 p-2 hover:bg-white/10 transition-colors cursor-pointer"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                        }}
-                      />
-                      <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/15 bg-[#0f1115]/95 px-2 py-1 text-[10px] text-zinc-100 opacity-0 shadow-lg shadow-black/40 transition-opacity duration-150 group-hover:opacity-100">
-                        {badge.label}
-                      </span>
-                    </div>
-                  ))
-              ) : (
-                <p className="text-zinc-400 text-sm">No badges unlocked yet</p>
-              )}
-            </div>
-          </div>
-
-          {/* Certificates Card */}
-          <div className="flex-1 rounded-2xl border border-white/10 bg-[#111214] px-6 py-6 flex flex-col">
-            <h2 className="text-base font-semibold text-zinc-100 mb-4">
-              Certificates
-            </h2>
-            <div className="flex gap-3 flex-wrap">
-              <button
-                onClick={() => setShowCertificateModal(true)}
-                className="group relative"
-              >
-                <img
-                  src="/images/certificate.png"
-                  alt="Certificate"
-                  className="h-20 w-20 object-contain rounded-lg border border-white/10 bg-white/5 p-2 hover:bg-white/10 transition-colors cursor-pointer"
-                />
-                <span className="pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-white/15 bg-[#0f1115]/95 px-2 py-1 text-[10px] text-zinc-100 opacity-0 shadow-lg shadow-black/40 transition-opacity duration-150 group-hover:opacity-100">
-                  Certificate
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {/* Certificate Modal */}
-          {showCertificateModal && (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-              onClick={() => setShowCertificateModal(false)}
-            >
-              <div
-                className="relative max-w-2xl max-h-[80vh] rounded-2xl border border-white/10 bg-[#111214] overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => setShowCertificateModal(false)}
-                  className="absolute top-4 right-4 z-10 h-8 w-8 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 flex items-center justify-center text-zinc-300 hover:text-zinc-100 transition-colors"
-                >
-                  ✕
-                </button>
-                <img
-                  src="/images/certificate.png"
-                  alt="Certificate"
-                  className="w-full h-auto"
-                />
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-700"
+                      style={{ width: `${aiScore}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}
         </div>
+
+        {/* Right Column - Quick Stats */}
+        <div className="dash-fade-up dash-d2 flex flex-col gap-4">
+          {/* Stats grid */}
+          <div className="flex-1 rounded-2xl border border-white/10 bg-[#111214] px-6 py-6">
+            <h2 className="text-base font-semibold text-zinc-100 mb-5">Quick Stats</h2>
+            {loadingStats ? (
+              <div className="grid grid-cols-2 gap-3">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="h-20 rounded-xl bg-white/5 animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  {
+                    label: "Day Streak",
+                    value: streak,
+                    icon: "🔥",
+                    color: "text-orange-400",
+                    bg: "bg-orange-500/10 border-orange-500/20",
+                  },
+                  {
+                    label: "Total XP",
+                    value: (totalXp || 0).toLocaleString(),
+                    icon: "⚡",
+                    color: "text-yellow-400",
+                    bg: "bg-yellow-500/10 border-yellow-500/20",
+                  },
+                  {
+                    label: "Modules Done",
+                    value: modulesCompleted,
+                    icon: "✅",
+                    color: "text-emerald-400",
+                    bg: "bg-emerald-500/10 border-emerald-500/20",
+                  },
+                  {
+                    label: "Leaderboard",
+                    value: leaderboardRank ? `#${leaderboardRank}` : "—",
+                    icon: "🏆",
+                    color: "text-violet-400",
+                    bg: "bg-violet-500/10 border-violet-500/20",
+                  },
+                ].map((stat, i) => (
+                  <div
+                    key={stat.label}
+                    className={`dash-scale-in rounded-xl border p-4 flex flex-col gap-2 ${stat.bg}`}
+                    style={{ animationDelay: `${0.15 + i * 0.07}s` }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-lg">{stat.icon}</span>
+                      <span className={`text-2xl font-bold ${stat.color}`}>{stat.value}</span>
+                    </div>
+                    <p className="text-xs text-zinc-500">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Current Section - Full Width */}
-      <div className="mt-4 rounded-2xl border border-white/10 bg-[#111214] px-6 py-8">
+      <div className="dash-fade-up dash-d3 mt-4 rounded-2xl border border-white/10 bg-[#111214] px-6 py-8">
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           {loadingCurrentModule ? (
             <h3 className="text-lg font-semibold text-zinc-100 text-center sm:text-left">
@@ -1003,172 +1009,208 @@ export default function Dashboard() {
       </div>
 
       {/* Progress & Calendar Section */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 items-stretch">
         {/* Progress Graph */}
-        <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-base font-semibold text-zinc-100">
-              Progress graph
-            </h2>
-            <div className="flex items-center gap-3">
-              <select
-                value={yAxisMetric}
-                onChange={(e) => setYAxisMetric(e.target.value as any)}
-                className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 text-xs text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer"
-              >
-                <option value="improvement">Improvement</option>
-                <option value="accuracy">Accuracy</option>
-                <option value="readiness">Readiness</option>
-              </select>
+        <div className="dash-fade-up dash-d4 rounded-2xl border border-white/10 bg-[#111214] px-6 py-6">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h2 className="text-base font-semibold text-zinc-100">Progress Graph</h2>
+              <p className="text-xs text-zinc-500 mt-0.5">Last 14 days</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {(["modules", "readiness"] as const).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setActiveGraphMetric(m)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                    activeGraphMetric === m
+                      ? m === "modules"
+                        ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                        : "border-blue-500/40 bg-blue-500/10 text-blue-300"
+                      : "border-white/10 bg-white/5 text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  {m === "modules" ? "Modules Done" : "Readiness Score"}
+                </button>
+              ))}
               <button
                 onClick={() => setShowGridLines(!showGridLines)}
-                className={`px-3 py-1.5 rounded-lg border transition-colors text-xs font-medium ${
-                  showGridLines
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-                    : "border-white/10 bg-white/5 text-zinc-400 hover:bg-white/10"
+                className={`px-2.5 py-1.5 rounded-lg border text-xs transition-colors ${
+                  showGridLines ? "border-white/15 bg-white/8 text-zinc-300" : "border-white/8 bg-transparent text-zinc-600"
                 }`}
+                title="Toggle grid"
               >
-                Grid
+                ⊞
               </button>
             </div>
           </div>
 
-          <div className="w-full overflow-x-auto">
-            <svg width="100%" height="220" viewBox="0 0 480 180" preserveAspectRatio="xMidYMid meet" style={{ minHeight: '220px' }}>
-              <defs>
-                <linearGradient
-                  id="progressGradient"
-                  x1="0"
-                  y1="0"
-                  x2="0"
-                  y2="1"
+          {loadingGraph ? (
+            <div className="h-48 flex items-center justify-center">
+              <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
+            </div>
+          ) : (() => {
+            const isModules = activeGraphMetric === "modules";
+            const color = isModules ? "#10b981" : "#3b82f6";
+            const gradId = isModules ? "modGrad" : "readGrad";
+
+            const values = graphPoints.map((p) =>
+              isModules ? p.modules_completed : (p.readiness_score ?? 0)
+            );
+            const maxVal = Math.max(...values, isModules ? 1 : 10);
+
+            const W = 460; const H = 160;
+            const ml = 38; const mr = 10; const mt = 10; const mb = 36;
+            const plotW = W - ml - mr;
+            const plotH = H - mt - mb;
+            const n = graphPoints.length;
+            const xStep = plotW / (n - 1);
+            const yScale = (v: number) => mt + plotH - (v / maxVal) * plotH;
+
+            const xs = graphPoints.map((_, i) => ml + i * xStep);
+            const ys = values.map((v) => yScale(v));
+
+            // Smooth bezier path
+            let path = `M ${xs[0]},${ys[0]}`;
+            for (let i = 1; i < n; i++) {
+              const cpx1 = xs[i - 1] + xStep / 3;
+              const cpx2 = xs[i] - xStep / 3;
+              path += ` C ${cpx1},${ys[i - 1]} ${cpx2},${ys[i]} ${xs[i]},${ys[i]}`;
+            }
+            const areaPath = `${path} L ${xs[n-1]},${mt + plotH} L ${xs[0]},${mt + plotH} Z`;
+
+            const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((i / 4) * maxVal));
+            const xLabels = graphPoints.filter((_, i) => i % 2 === 0 || i === n - 1);
+
+            // Tooltip position as % of SVG dimensions
+            const hxPct = graphHoverIdx !== null ? (xs[graphHoverIdx] / W) * 100 : null;
+            const hyPct = graphHoverIdx !== null ? (ys[graphHoverIdx] / H) * 100 : null;
+            const hVal  = graphHoverIdx !== null ? values[graphHoverIdx] : null;
+            const hPoint = graphHoverIdx !== null ? graphPoints[graphHoverIdx] : null;
+
+            return (
+              <div className="relative">
+                <svg
+                  width="100%"
+                  viewBox={`0 0 ${W} ${H}`}
+                  preserveAspectRatio="xMidYMid meet"
+                  className="cursor-crosshair"
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const xInSvg = ((e.clientX - rect.left) / rect.width) * W;
+                    const nearest = xs.reduce((best, x, i) =>
+                      Math.abs(x - xInSvg) < Math.abs(xs[best] - xInSvg) ? i : best, 0);
+                    setGraphHoverIdx(nearest);
+                  }}
+                  onMouseLeave={() => setGraphHoverIdx(null)}
                 >
-                  <stop offset="0%" stopColor="rgba(16, 185, 129, 0.3)" />
-                  <stop offset="100%" stopColor="rgba(16, 185, 129, 0)" />
-                </linearGradient>
-              </defs>
+                  <defs>
+                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+                      <stop offset="100%" stopColor={color} stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
 
-              {/* Grid lines */}
-              {showGridLines && (
-                <>
-                  {/* Horizontal grid lines */}
-                  {[0, 25, 50, 75, 100].map((value) => (
-                    <line
-                      key={`h-grid-${value}`}
-                      x1="50"
-                      y1={135 - (value / 100) * 120}
-                      x2="460"
-                      y2={135 - (value / 100) * 120}
-                      stroke="#10b981"
-                      strokeWidth="0.5"
-                      opacity="0.2"
-                      strokeDasharray="2,2"
-                    />
+                  {/* Grid */}
+                  {showGridLines && yTicks.map((tick, i) => (
+                    <line key={i} x1={ml} y1={yScale(tick)} x2={W - mr} y2={yScale(tick)}
+                      stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
                   ))}
-                  {/* Vertical grid lines */}
-                  {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((i) => (
-                    <line
-                      key={`v-grid-${i}`}
-                      x1={50 + (i * 410) / 15}
-                      y1="15"
-                      x2={50 + (i * 410) / 15}
-                      y2="135"
-                      stroke="#10b981"
-                      strokeWidth="0.5"
-                      opacity="0.2"
-                      strokeDasharray="2,2"
-                    />
+
+                  {/* Axes */}
+                  <line x1={ml} y1={mt} x2={ml} y2={mt + plotH} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+                  <line x1={ml} y1={mt + plotH} x2={W - mr} y2={mt + plotH} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+
+                  {/* Y labels */}
+                  {yTicks.map((tick, i) => (
+                    <text key={i} x={ml - 5} y={yScale(tick) + 3} textAnchor="end" fontSize="8" fill="rgba(161,161,170,0.7)">{tick}</text>
                   ))}
-                </>
-              )}
 
-              {/* Y-axis */}
-              <line x1="50" y1="15" x2="50" y2="135" stroke="#10b981" strokeWidth="1.5" />
-              {/* X-axis */}
-              <line x1="50" y1="135" x2="460" y2="135" stroke="#10b981" strokeWidth="1.5" />
+                  {/* X labels */}
+                  {xLabels.map((p, i) => {
+                    const idx = graphPoints.findIndex((g) => g.date === p.date);
+                    return (
+                      <text key={i} x={xs[idx]} y={H - 4} textAnchor="middle" fontSize="7.5" fill="rgba(161,161,170,0.6)">{p.label}</text>
+                    );
+                  })}
 
-              {/* Y-axis labels */}
-              {[0, 25, 50, 75, 100].map((value) => (
-                <g key={`y-label-${value}`}>
-                  <text
-                    x="42"
-                    y={135 - (value / 100) * 120 + 4}
-                    textAnchor="end"
-                    fontSize="9"
-                    fill="#10b981"
-                    opacity="0.8"
+                  {/* Area fill */}
+                  <path d={areaPath} fill={`url(#${gradId})`} />
+
+                  {/* Line */}
+                  <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+                  {/* Dots */}
+                  {graphPoints.map((p, i) => {
+                    const v = values[i];
+                    const isHovered = graphHoverIdx === i;
+                    if (v === 0 && !isHovered) return null;
+                    return (
+                      <circle
+                        key={i}
+                        cx={xs[i]} cy={ys[i]}
+                        r={isHovered ? 5 : 3}
+                        fill={isHovered ? "#fff" : color}
+                        stroke={isHovered ? color : "rgba(0,0,0,0.5)"}
+                        strokeWidth={isHovered ? 2 : 1.5}
+                        className="transition-all duration-100"
+                      />
+                    );
+                  })}
+
+                  {/* Vertical crosshair on hover */}
+                  {graphHoverIdx !== null && (
+                    <line
+                      x1={xs[graphHoverIdx]} y1={mt}
+                      x2={xs[graphHoverIdx]} y2={mt + plotH}
+                      stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="3,3"
+                    />
+                  )}
+                </svg>
+
+                {/* HTML tooltip */}
+                {graphHoverIdx !== null && hxPct !== null && hyPct !== null && hPoint && (
+                  <div
+                    className="pointer-events-none absolute"
+                    style={{
+                      left: `clamp(40px, ${hxPct}%, calc(100% - 40px))`,
+                      top: `clamp(8px, ${hyPct}%, calc(100% - 40px))`,
+                      transform: "translate(-50%, -130%)",
+                    }}
                   >
-                    {value}
-                  </text>
-                </g>
-              ))}
+                    <div className="px-2.5 py-1.5 rounded-lg bg-black/80 border border-white/15 backdrop-blur-sm text-center">
+                      <p className="text-[10px] text-zinc-400">{hPoint.label}</p>
+                      <p className={`text-sm font-semibold ${isModules ? "text-emerald-400" : "text-blue-400"}`}>
+                        {hVal}{isModules ? " modules" : " / 100"}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
-              {/* X-axis labels (Weeks) */}
-              {[0, 1, 2, 3].map((weekIdx) => (
-                <g key={`x-label-${weekIdx}`}>
-                  <text
-                    x={50 + weekIdx * 102.5 + 51.25}
-                    y="152"
-                    textAnchor="middle"
-                    fontSize="10"
-                    fill="#10b981"
-                    opacity="0.8"
-                  >
-                    W{weekIdx + 1}
-                  </text>
-                </g>
-              ))}
-
-              {/* Y-axis label */}
-              <text
-                x="20"
-                y="75"
-                textAnchor="middle"
-                fontSize="10"
-                fill="#10b981"
-                opacity="0.7"
-                transform="rotate(-90 20 75)"
-              >
-                {metricLabels[yAxisMetric]}
-              </text>
-
-              {/* X-axis label */}
-              <text
-                x="255"
-                y="170"
-                textAnchor="middle"
-                fontSize="10"
-                fill="#10b981"
-                opacity="0.7"
-              >
-                Time (Weeks)
-              </text>
-
-              {/* Graph line */}
-              <polyline
-                points={generateGraphPath()}
-                fill="none"
-                stroke="#10b981"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-
-              {/* Graph area */}
-              <polygon
-                points={`50,135 ${generateGraphPath().split(" ").slice(1).join(" ")} 460,135`}
-                fill="url(#progressGradient)"
-              />
-            </svg>
+          {/* Legend */}
+          <div className="flex items-center gap-4 mt-2">
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-0.5 rounded-full bg-emerald-500 inline-block" />
+              <span className="text-[10px] text-zinc-500">Modules completed</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-0.5 rounded-full bg-blue-500 inline-block" />
+              <span className="text-[10px] text-zinc-500">Avg readiness score</span>
+            </div>
           </div>
         </div>
 
         {/* Calendar */}
-        <Calendar />
+        <div className="dash-fade-up dash-d5 h-full">
+          <Calendar />
+        </div>
       </div>
 
       {/* Recommended Section */}
-      <div className="mt-6">
+      <div className="dash-fade-up dash-d6 mt-6">
         <h2 className="text-lg font-semibold text-zinc-100 mb-4">
           Recommended for you
         </h2>

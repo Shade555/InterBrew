@@ -63,6 +63,19 @@ export default function LessonView({ module, onBack, onComplete }) {
       }
 
       try {
+        // Record last activity
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          supabase.from("profiles").update({
+            last_activity: {
+              type: "scenario",
+              label: module.title || "Lesson",
+              module_id: module.id,
+              scenario_id: module.scenario_id ?? null,
+              updated_at: new Date().toISOString(),
+            },
+          }).eq("id", user.id).then(() => {});
+        }
         // Fetch lessons for this module
         const { data: lessonData, error: lessonError } = await supabase
           .from("lessons")
@@ -713,6 +726,31 @@ export default function LessonView({ module, onBack, onComplete }) {
           module_id: module.id,
           completed: true,
         }, { onConflict: "user_id,module_id" });
+
+        // Update dashboard_graph: increment today's modules_completed
+        try {
+          const today = new Date().toISOString().slice(0, 10);
+          const { data: dashData } = await supabase
+            .from("user_dashboards")
+            .select("dashboard_graph")
+            .eq("user_id", authData.user.id)
+            .maybeSingle();
+
+          const graph =
+            Array.isArray(dashData?.dashboard_graph) ? dashData.dashboard_graph : [];
+          const idx = graph.findIndex((e) => e.date === today);
+          if (idx >= 0) {
+            graph[idx] = { ...graph[idx], modules_completed: (graph[idx].modules_completed || 0) + 1 };
+          } else {
+            graph.push({ date: today, modules_completed: 1 });
+          }
+          await supabase.from("user_dashboards").upsert(
+            { user_id: authData.user.id, dashboard_graph: graph, updated_at: new Date().toISOString() },
+            { onConflict: "user_id" },
+          );
+        } catch (graphErr) {
+          console.warn("Failed to update dashboard_graph:", graphErr);
+        }
       }
     } catch (err) {
       console.error("Failed to save report:", err);

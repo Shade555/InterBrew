@@ -570,6 +570,7 @@ export default function Collections({
   } | null>(null);
   const [interviewIntroPopup, setInterviewIntroPopup] = useState<{
     sectionTopic: string;
+    sectionTitle: string;
     summary: string;
   } | null>(null);
   const [isSavingNote, setIsSavingNote] = useState(false);
@@ -1168,6 +1169,8 @@ export default function Collections({
     moduleId: string,
     problem: string,
     problemDifficulty?: string,
+    sectionTitle?: string,
+    sectionKey?: string,
   ) {
     setPanelMode("solve");
     setActiveModuleId(moduleId);
@@ -1175,6 +1178,20 @@ export default function Collections({
     if (problemDifficulty === "Easy") setMockDifficulty("Beginner");
     else if (problemDifficulty === "Difficult") setMockDifficulty("Advanced");
     else setMockDifficulty("Intermediate");
+
+    // Record last activity
+    if (userId && supabase) {
+      supabase.from("profiles").update({
+        last_activity: {
+          type: "collection_problem",
+          label: problem,
+          module_id: moduleId,
+          section_key: sectionKey ?? null,
+          section_title: sectionTitle ?? null,
+          updated_at: new Date().toISOString(),
+        },
+      }).eq("id", userId).then(() => {});
+    }
 
     // Update current module in dashboard via API
     if (userId) {
@@ -1204,16 +1221,30 @@ export default function Collections({
   function startSectionMockInterview(sectionTopic: string) {
     setInterviewIntroPopup({
       sectionTopic,
+      sectionTitle: sectionTopic,
       summary: getSectionInterviewSummary(sectionTopic),
     });
   }
 
-  function launchSectionMockInterview(sectionTopic: string) {
+  function launchSectionMockInterview(sectionTopic: string, sectionTitle?: string) {
     setInterviewIntroPopup(null);
     setPanelMode("interview");
     setActiveModuleId(null);
     setTopic(sectionTopic);
     setMockDifficulty("Intermediate");
+
+    // Record last activity
+    if (userId && supabase) {
+      supabase.from("profiles").update({
+        last_activity: {
+          type: "collection_mock",
+          label: `${sectionTitle ?? sectionTopic} Mock Interview`,
+          section_key: sectionTopic,
+          section_title: sectionTitle ?? sectionTopic,
+          updated_at: new Date().toISOString(),
+        },
+      }).eq("id", userId).then(() => {});
+    }
   }
 
   function pickRandomProblem() {
@@ -1840,7 +1871,7 @@ export default function Collections({
                                 <td className="px-5 py-3 text-center align-middle">
                                   <button
                                     onClick={() =>
-                                      startSolve(it.id, it.name, it.difficulty)
+                                      startSolve(it.id, it.name, it.difficulty, section.title, section.sectionKey)
                                     }
                                     className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
                                   >
@@ -2303,7 +2334,7 @@ export default function Collections({
               <button
                 type="button"
                 onClick={() =>
-                  launchSectionMockInterview(interviewIntroPopup.sectionTopic)
+                  launchSectionMockInterview(interviewIntroPopup.sectionTopic, interviewIntroPopup.sectionTitle)
                 }
                 className="inline-flex h-10 items-center justify-center rounded-md border border-blue-500/40 bg-blue-500/10 px-4 text-sm text-blue-300 hover:bg-blue-500/20 transition-colors"
               >
