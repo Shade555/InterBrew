@@ -4,15 +4,16 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { supabase } from "../../../lib/supabaseClient";
+import { calculateReadinessScore } from "../../../lib/readinessScore";
 
 function Calendar() {
   const today = new Date();
   const [current, setCurrent] = useState<Date>(
-    new Date(today.getFullYear(), today.getMonth(), 1)
+    new Date(today.getFullYear(), today.getMonth(), 1),
   );
   const [selected, setSelected] = useState<number | null>(null);
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(
-    null
+    null,
   );
   const [anchorFixed, setAnchorFixed] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -79,7 +80,7 @@ function Calendar() {
   function handleDateClick(
     e: React.MouseEvent<HTMLDivElement>,
     d: number,
-    type: string
+    type: string,
   ) {
     const el = e.currentTarget as HTMLDivElement;
     setShowAddFormModal(false);
@@ -128,7 +129,7 @@ function Calendar() {
         setLoadingInterviews(false);
       }
     },
-    [month, year]
+    [month, year],
   );
 
   const fetchInterviewsForMonth = useCallback(async () => {
@@ -295,10 +296,10 @@ function Calendar() {
                   const dayMap = monthInterviewsMap[cell.day] || [];
                   const hasScheduled = dayMap.length > 0;
                   const hasCompleted = dayMap.some(
-                    (iv: any) => iv.status === "completed"
+                    (iv: any) => iv.status === "completed",
                   );
                   const hasMissed = dayMap.some(
-                    (iv: any) => iv.status === "missed"
+                    (iv: any) => iv.status === "missed",
                   );
                   if (hasCompleted) {
                     return (
@@ -335,7 +336,8 @@ function Calendar() {
               className={`${anchorFixed ? "fixed" : "absolute"} z-50 w-72 sm:w-96 bg-black/80 border border-white/20 rounded-lg p-3 shadow-lg text-sm`}
             >
               <div className="text-xs text-zinc-400 mb-2">
-                {selected} {current.toLocaleString(undefined, { month: "short" })}
+                {selected}{" "}
+                {current.toLocaleString(undefined, { month: "short" })}
               </div>
 
               <div className="mb-3">
@@ -380,7 +382,7 @@ function Calendar() {
                                   onClick={async () =>
                                     await updateInterviewStatus(
                                       iv.id,
-                                      "completed"
+                                      "completed",
                                     )
                                   }
                                   className="text-xs px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 transition-colors"
@@ -531,11 +533,11 @@ function Calendar() {
               if (window.innerWidth < 640) {
                 const top = Math.min(
                   Math.max(topRaw, 8),
-                  Math.max(8, window.innerHeight - 120)
+                  Math.max(8, window.innerHeight - 120),
                 );
                 return createPortal(
                   React.cloneElement(dd, { style: { left: 8, right: 8, top } }),
-                  document.body
+                  document.body,
                 );
               }
               const maxLeft = Math.max(8, window.innerWidth - ddW - 8);
@@ -543,7 +545,7 @@ function Calendar() {
               const top = topRaw;
               return createPortal(
                 React.cloneElement(dd, { style: { left, top } }),
-                document.body
+                document.body,
               );
             } catch (e) {
               return dd;
@@ -565,11 +567,23 @@ export default function Dashboard() {
   const [loadingAiReport, setLoadingAiReport] = useState(true);
   const [regeneratingReport, setRegeneratingReport] = useState(false);
   const [showGridLines, setShowGridLines] = useState(true);
-  const [activeGraphMetric, setActiveGraphMetric] = useState<"modules" | "readiness">("modules");
-  const [graphPoints, setGraphPoints] = useState<{ date: string; label: string; modules_completed: number; readiness_score: number | null }[]>([]);
+  const [activeGraphMetric, setActiveGraphMetric] = useState<
+    "modules" | "readiness"
+  >("modules");
+  const [graphPoints, setGraphPoints] = useState<
+    {
+      date: string;
+      label: string;
+      modules_completed: number;
+      readiness_score: number | null;
+    }[]
+  >([]);
   const [loadingGraph, setLoadingGraph] = useState(true);
   const [graphHoverIdx, setGraphHoverIdx] = useState<number | null>(null);
-  const [currentModule, setCurrentModule] = useState<{ name: string; path: string } | null>(null);
+  const [currentModule, setCurrentModule] = useState<{
+    name: string;
+    path: string;
+  } | null>(null);
   const [loadingCurrentModule, setLoadingCurrentModule] = useState(true);
 
   // Quick stats
@@ -578,6 +592,7 @@ export default function Dashboard() {
   const [modulesCompleted, setModulesCompleted] = useState<number>(0);
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [readinessData, setReadinessData] = useState<any>(null);
 
   // Graph data fetch removed — now handled by fetchGraph below
 
@@ -586,7 +601,10 @@ export default function Dashboard() {
     const fetchAiReport = async () => {
       try {
         setLoadingAiReport(true);
-        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        const {
+          data: { user },
+          error: userErr,
+        } = await supabase.auth.getUser();
         if (userErr) throw userErr;
         const userId = user?.id;
 
@@ -615,7 +633,9 @@ export default function Dashboard() {
       } catch (err) {
         console.error("Error fetching AI report:", err);
         setAiScore(65);
-        setRecommendation("Keep practicing to improve your interview readiness.");
+        setRecommendation(
+          "Keep practicing to improve your interview readiness.",
+        );
       } finally {
         setLoadingAiReport(false);
       }
@@ -628,7 +648,10 @@ export default function Dashboard() {
   const handleRegenerateReport = async () => {
     try {
       setRegeneratingReport(true);
-      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      const {
+        data: { user },
+        error: userErr,
+      } = await supabase.auth.getUser();
       if (userErr) throw userErr;
       const userId = user?.id;
 
@@ -642,7 +665,11 @@ export default function Dashboard() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("AI Report regeneration error:", response.status, errorText);
+        console.error(
+          "AI Report regeneration error:",
+          response.status,
+          errorText,
+        );
         throw new Error(`Failed to regenerate report: ${response.status}`);
       }
 
@@ -661,16 +688,39 @@ export default function Dashboard() {
     const fetchStats = async () => {
       try {
         setLoadingStats(true);
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) return;
         const userId = user.id;
 
-        const [dashRes, profileRes, scenarioProgressRes, collectionProgressRes, lbRes] = await Promise.all([
-          supabase.from("user_dashboards").select("streak").eq("user_id", userId).maybeSingle(),
+        const [
+          dashRes,
+          profileRes,
+          scenarioProgressRes,
+          collectionProgressRes,
+          lbRes,
+        ] = await Promise.all([
+          supabase
+            .from("user_dashboards")
+            .select("streak")
+            .eq("user_id", userId)
+            .maybeSingle(),
           supabase.from("profiles").select("xp").eq("id", userId).maybeSingle(),
-          supabase.from("user_module_progress").select("module_id", { count: "exact", head: true }).eq("user_id", userId).eq("completed", true),
-          supabase.from("user_collection_module_progress").select("module_id", { count: "exact", head: true }).eq("user_id", userId).eq("completed", true),
-          supabase.from("leaderboard").select("user_id").order("total_score", { ascending: false }),
+          supabase
+            .from("user_module_progress")
+            .select("module_id", { count: "exact", head: true })
+            .eq("user_id", userId)
+            .eq("completed", true),
+          supabase
+            .from("user_collection_module_progress")
+            .select("module_id", { count: "exact", head: true })
+            .eq("user_id", userId)
+            .eq("completed", true),
+          supabase
+            .from("leaderboard")
+            .select("user_id")
+            .order("total_score", { ascending: false }),
         ]);
 
         setStreak(dashRes.data?.streak ?? 0);
@@ -698,12 +748,22 @@ export default function Dashboard() {
     const fetchGraph = async () => {
       try {
         setLoadingGraph(true);
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) return;
 
         const [dashRes, aiRes] = await Promise.all([
-          supabase.from("user_dashboards").select("dashboard_graph").eq("user_id", user.id).maybeSingle(),
-          supabase.from("user_ai_reports").select("score, created_at").eq("user_id", user.id).order("created_at", { ascending: true }),
+          supabase
+            .from("user_dashboards")
+            .select("dashboard_graph")
+            .eq("user_id", user.id)
+            .maybeSingle(),
+          supabase
+            .from("user_ai_reports")
+            .select("score, created_at")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: true }),
         ]);
 
         // Build last-14-days skeleton
@@ -711,16 +771,27 @@ export default function Dashboard() {
           const d = new Date();
           d.setDate(d.getDate() - (13 - i));
           const date = d.toISOString().slice(0, 10);
-          const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-          return { date, label, modules_completed: 0, readiness_score: null as number | null };
+          const label = d.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          });
+          return {
+            date,
+            label,
+            modules_completed: 0,
+            readiness_score: null as number | null,
+          };
         });
 
         // Fill modules_completed from dashboard_graph
         const stored: { date: string; modules_completed: number }[] =
-          Array.isArray(dashRes.data?.dashboard_graph) ? dashRes.data.dashboard_graph : [];
+          Array.isArray(dashRes.data?.dashboard_graph)
+            ? dashRes.data.dashboard_graph
+            : [];
         stored.forEach((entry) => {
           const idx = days.findIndex((d) => d.date === entry.date);
-          if (idx >= 0) days[idx].modules_completed = entry.modules_completed || 0;
+          if (idx >= 0)
+            days[idx].modules_completed = entry.modules_completed || 0;
         });
 
         // Fill readiness_score: average score per day from user_ai_reports
@@ -733,7 +804,9 @@ export default function Dashboard() {
         days.forEach((d) => {
           const scores = scoresByDay[d.date];
           if (scores && scores.length > 0) {
-            d.readiness_score = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+            d.readiness_score = Math.round(
+              scores.reduce((a, b) => a + b, 0) / scores.length,
+            );
           }
         });
 
@@ -752,9 +825,15 @@ export default function Dashboard() {
     const fetchCurrentModule = async () => {
       try {
         setLoadingCurrentModule(true);
-        const { data: { user }, error: userErr } = await supabase.auth.getUser();
+        const {
+          data: { user },
+          error: userErr,
+        } = await supabase.auth.getUser();
         if (userErr) throw userErr;
-        if (!user) { setLoadingCurrentModule(false); return; }
+        if (!user) {
+          setLoadingCurrentModule(false);
+          return;
+        }
 
         const { data: profileData } = await supabase
           .from("profiles")
@@ -769,7 +848,10 @@ export default function Dashboard() {
               name: a.label,
               path: `/scenario-practice`,
             });
-          } else if (a.type === "collection_mock" || a.type === "collection_problem") {
+          } else if (
+            a.type === "collection_mock" ||
+            a.type === "collection_problem"
+          ) {
             setCurrentModule({
               name: a.label,
               path: `/collections`,
@@ -824,8 +906,12 @@ export default function Dashboard() {
         <div className="dash-fade-up dash-d1 rounded-2xl border border-white/10 bg-[#111214] px-6 py-8 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-base font-semibold text-zinc-100">AI Readiness Report</h2>
-              <p className="text-xs text-zinc-500 mt-0.5">Based on your recent activity</p>
+              <h2 className="text-base font-semibold text-zinc-100">
+                AI Readiness Report
+              </h2>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Based on your recent activity
+              </p>
             </div>
             <button
               onClick={handleRegenerateReport}
@@ -837,8 +923,14 @@ export default function Dashboard() {
               }`}
               aria-label="Regenerate AI report"
             >
-              <svg className={`w-3 h-3 ${regeneratingReport ? "animate-spin" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M21 12a9 9 0 11-6.219-8.56" strokeLinecap="round"/>
+              <svg
+                className={`w-3 h-3 ${regeneratingReport ? "animate-spin" : ""}`}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <path d="M21 12a9 9 0 11-6.219-8.56" strokeLinecap="round" />
               </svg>
               Refresh
             </button>
@@ -847,7 +939,9 @@ export default function Dashboard() {
           {loadingAiReport ? (
             <div className="flex-1 flex flex-col items-center justify-center gap-3">
               <div className="w-7 h-7 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
-              <p className="text-xs text-zinc-500">Analysing your progress...</p>
+              <p className="text-xs text-zinc-500">
+                Analysing your progress...
+              </p>
             </div>
           ) : (
             <div className="flex items-center gap-6">
@@ -855,50 +949,83 @@ export default function Dashboard() {
               <div className="relative shrink-0 w-32 h-32">
                 <svg width="128" height="128" viewBox="0 0 128 128">
                   <defs>
-                    <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <linearGradient
+                      id="ringGrad"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="100%"
+                    >
                       <stop offset="0%" stopColor="#10b981" />
                       <stop offset="100%" stopColor="#06b6d4" />
                     </linearGradient>
                   </defs>
                   {/* Track */}
-                  <circle cx="64" cy="64" r="54" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" />
+                  <circle
+                    cx="64"
+                    cy="64"
+                    r="54"
+                    fill="none"
+                    stroke="rgba(255,255,255,0.06)"
+                    strokeWidth="10"
+                  />
                   {/* Progress */}
                   <circle
-                    cx="64" cy="64" r="54" fill="none"
-                    stroke="url(#ringGrad)" strokeWidth="10"
+                    cx="64"
+                    cy="64"
+                    r="54"
+                    fill="none"
+                    stroke="url(#ringGrad)"
+                    strokeWidth="10"
                     strokeDasharray={`${(aiScore / 100) * 339.3} 339.3`}
                     strokeLinecap="round"
                     transform="rotate(-90 64 64)"
                     className="transition-all duration-700"
-                    style={{ animation: "ringDraw 0.9s cubic-bezier(0.22,1,0.36,1) 0.3s both" }}
+                    style={{
+                      animation:
+                        "ringDraw 0.9s cubic-bezier(0.22,1,0.36,1) 0.3s both",
+                    }}
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-3xl font-bold text-emerald-400 leading-none">{aiScore}</span>
-                  <span className="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5">score</span>
+                  <span className="text-3xl font-bold text-emerald-400 leading-none">
+                    {aiScore}
+                  </span>
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5">
+                    score
+                  </span>
                 </div>
               </div>
 
               {/* Right side: label + recommendation + rating bar */}
               <div className="flex-1 min-w-0">
                 {/* Rating label */}
-                <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mb-3 border ${
-                  aiScore >= 80 ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
-                  : aiScore >= 60 ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
-                  : aiScore >= 40 ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
-                  : "bg-rose-500/15 border-rose-500/30 text-rose-300"
-                }`}>
+                <div
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium mb-3 border ${
+                    readinessData?.readiness_level === "Strong Candidate"
+                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-300"
+                      : readinessData?.readiness_level === "Interview Ready"
+                        ? "bg-blue-500/15 border-blue-500/30 text-blue-300"
+                        : readinessData?.readiness_level === "Progressing"
+                          ? "bg-amber-500/15 border-amber-500/30 text-amber-300"
+                          : "bg-rose-500/15 border-rose-500/30 text-rose-300"
+                  }`}
+                >
                   <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                  {aiScore >= 80 ? "Interview Ready" : aiScore >= 60 ? "On Track" : aiScore >= 40 ? "Needs Work" : "Just Starting"}
+                  {readinessData?.readiness_level || "Just Starting"}
                 </div>
 
                 {/* Recommendation */}
-                <p className="text-sm text-zinc-300 leading-relaxed line-clamp-4">{recommendation}</p>
+                <p className="text-sm text-zinc-300 leading-relaxed line-clamp-4">
+                  {recommendation}
+                </p>
 
                 {/* Score bar */}
                 <div className="mt-4">
                   <div className="flex justify-between text-[10px] text-zinc-600 mb-1">
-                    <span>0</span><span>50</span><span>100</span>
+                    <span>0</span>
+                    <span>50</span>
+                    <span>100</span>
                   </div>
                   <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
                     <div
@@ -916,11 +1043,16 @@ export default function Dashboard() {
         <div className="dash-fade-up dash-d2 flex flex-col gap-4">
           {/* Stats grid */}
           <div className="flex-1 rounded-2xl border border-white/10 bg-[#111214] px-6 py-6">
-            <h2 className="text-base font-semibold text-zinc-100 mb-5">Quick Stats</h2>
+            <h2 className="text-base font-semibold text-zinc-100 mb-5">
+              Quick Stats
+            </h2>
             {loadingStats ? (
               <div className="grid grid-cols-2 gap-3">
                 {[...Array(4)].map((_, i) => (
-                  <div key={i} className="h-20 rounded-xl bg-white/5 animate-pulse" />
+                  <div
+                    key={i}
+                    className="h-20 rounded-xl bg-white/5 animate-pulse"
+                  />
                 ))}
               </div>
             ) : (
@@ -962,7 +1094,9 @@ export default function Dashboard() {
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-lg">{stat.icon}</span>
-                      <span className={`text-2xl font-bold ${stat.color}`}>{stat.value}</span>
+                      <span className={`text-2xl font-bold ${stat.color}`}>
+                        {stat.value}
+                      </span>
                     </div>
                     <p className="text-xs text-zinc-500">{stat.label}</p>
                   </div>
@@ -1014,7 +1148,9 @@ export default function Dashboard() {
         <div className="dash-fade-up dash-d4 rounded-2xl border border-white/10 bg-[#111214] px-6 py-6">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="text-base font-semibold text-zinc-100">Progress Graph</h2>
+              <h2 className="text-base font-semibold text-zinc-100">
+                Progress Graph
+              </h2>
               <p className="text-xs text-zinc-500 mt-0.5">Last 14 days</p>
             </div>
             <div className="flex items-center gap-2">
@@ -1036,7 +1172,9 @@ export default function Dashboard() {
               <button
                 onClick={() => setShowGridLines(!showGridLines)}
                 className={`px-2.5 py-1.5 rounded-lg border text-xs transition-colors ${
-                  showGridLines ? "border-white/15 bg-white/8 text-zinc-300" : "border-white/8 bg-transparent text-zinc-600"
+                  showGridLines
+                    ? "border-white/15 bg-white/8 text-zinc-300"
+                    : "border-white/8 bg-transparent text-zinc-600"
                 }`}
                 title="Toggle grid"
               >
@@ -1049,156 +1187,245 @@ export default function Dashboard() {
             <div className="h-48 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin" />
             </div>
-          ) : (() => {
-            const isModules = activeGraphMetric === "modules";
-            const color = isModules ? "#10b981" : "#3b82f6";
-            const gradId = isModules ? "modGrad" : "readGrad";
+          ) : (
+            (() => {
+              const isModules = activeGraphMetric === "modules";
+              const color = isModules ? "#10b981" : "#3b82f6";
+              const gradId = isModules ? "modGrad" : "readGrad";
 
-            const values = graphPoints.map((p) =>
-              isModules ? p.modules_completed : (p.readiness_score ?? 0)
-            );
-            const maxVal = Math.max(...values, isModules ? 1 : 10);
+              const values = graphPoints.map((p) =>
+                isModules ? p.modules_completed : (p.readiness_score ?? 0),
+              );
+              const maxVal = Math.max(...values, isModules ? 1 : 10);
 
-            const W = 460; const H = 160;
-            const ml = 38; const mr = 10; const mt = 10; const mb = 36;
-            const plotW = W - ml - mr;
-            const plotH = H - mt - mb;
-            const n = graphPoints.length;
-            const xStep = plotW / (n - 1);
-            const yScale = (v: number) => mt + plotH - (v / maxVal) * plotH;
+              const W = 460;
+              const H = 160;
+              const ml = 38;
+              const mr = 10;
+              const mt = 10;
+              const mb = 36;
+              const plotW = W - ml - mr;
+              const plotH = H - mt - mb;
+              const n = graphPoints.length;
+              const xStep = plotW / (n - 1);
+              const yScale = (v: number) => mt + plotH - (v / maxVal) * plotH;
 
-            const xs = graphPoints.map((_, i) => ml + i * xStep);
-            const ys = values.map((v) => yScale(v));
+              const xs = graphPoints.map((_, i) => ml + i * xStep);
+              const ys = values.map((v) => yScale(v));
 
-            // Smooth bezier path
-            let path = `M ${xs[0]},${ys[0]}`;
-            for (let i = 1; i < n; i++) {
-              const cpx1 = xs[i - 1] + xStep / 3;
-              const cpx2 = xs[i] - xStep / 3;
-              path += ` C ${cpx1},${ys[i - 1]} ${cpx2},${ys[i]} ${xs[i]},${ys[i]}`;
-            }
-            const areaPath = `${path} L ${xs[n-1]},${mt + plotH} L ${xs[0]},${mt + plotH} Z`;
+              // Smooth bezier path
+              let path = `M ${xs[0]},${ys[0]}`;
+              for (let i = 1; i < n; i++) {
+                const cpx1 = xs[i - 1] + xStep / 3;
+                const cpx2 = xs[i] - xStep / 3;
+                path += ` C ${cpx1},${ys[i - 1]} ${cpx2},${ys[i]} ${xs[i]},${ys[i]}`;
+              }
+              const areaPath = `${path} L ${xs[n - 1]},${mt + plotH} L ${xs[0]},${mt + plotH} Z`;
 
-            const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((i / 4) * maxVal));
-            const xLabels = graphPoints.filter((_, i) => i % 2 === 0 || i === n - 1);
+              const yTicks = Array.from({ length: 5 }, (_, i) =>
+                Math.round((i / 4) * maxVal),
+              );
+              const xLabels = graphPoints.filter(
+                (_, i) => i % 2 === 0 || i === n - 1,
+              );
 
-            // Tooltip position as % of SVG dimensions
-            const hxPct = graphHoverIdx !== null ? (xs[graphHoverIdx] / W) * 100 : null;
-            const hyPct = graphHoverIdx !== null ? (ys[graphHoverIdx] / H) * 100 : null;
-            const hVal  = graphHoverIdx !== null ? values[graphHoverIdx] : null;
-            const hPoint = graphHoverIdx !== null ? graphPoints[graphHoverIdx] : null;
+              // Tooltip position as % of SVG dimensions
+              const hxPct =
+                graphHoverIdx !== null ? (xs[graphHoverIdx] / W) * 100 : null;
+              const hyPct =
+                graphHoverIdx !== null ? (ys[graphHoverIdx] / H) * 100 : null;
+              const hVal =
+                graphHoverIdx !== null ? values[graphHoverIdx] : null;
+              const hPoint =
+                graphHoverIdx !== null ? graphPoints[graphHoverIdx] : null;
 
-            return (
-              <div className="relative">
-                <svg
-                  width="100%"
-                  viewBox={`0 0 ${W} ${H}`}
-                  preserveAspectRatio="xMidYMid meet"
-                  className="cursor-crosshair"
-                  onMouseMove={(e) => {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const xInSvg = ((e.clientX - rect.left) / rect.width) * W;
-                    const nearest = xs.reduce((best, x, i) =>
-                      Math.abs(x - xInSvg) < Math.abs(xs[best] - xInSvg) ? i : best, 0);
-                    setGraphHoverIdx(nearest);
-                  }}
-                  onMouseLeave={() => setGraphHoverIdx(null)}
-                >
-                  <defs>
-                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-                      <stop offset="100%" stopColor={color} stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Grid */}
-                  {showGridLines && yTicks.map((tick, i) => (
-                    <line key={i} x1={ml} y1={yScale(tick)} x2={W - mr} y2={yScale(tick)}
-                      stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-                  ))}
-
-                  {/* Axes */}
-                  <line x1={ml} y1={mt} x2={ml} y2={mt + plotH} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-                  <line x1={ml} y1={mt + plotH} x2={W - mr} y2={mt + plotH} stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-
-                  {/* Y labels */}
-                  {yTicks.map((tick, i) => (
-                    <text key={i} x={ml - 5} y={yScale(tick) + 3} textAnchor="end" fontSize="8" fill="rgba(161,161,170,0.7)">{tick}</text>
-                  ))}
-
-                  {/* X labels */}
-                  {xLabels.map((p, i) => {
-                    const idx = graphPoints.findIndex((g) => g.date === p.date);
-                    return (
-                      <text key={i} x={xs[idx]} y={H - 4} textAnchor="middle" fontSize="7.5" fill="rgba(161,161,170,0.6)">{p.label}</text>
-                    );
-                  })}
-
-                  {/* Area fill */}
-                  <path d={areaPath} fill={`url(#${gradId})`} />
-
-                  {/* Line */}
-                  <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-
-                  {/* Dots */}
-                  {graphPoints.map((p, i) => {
-                    const v = values[i];
-                    const isHovered = graphHoverIdx === i;
-                    if (v === 0 && !isHovered) return null;
-                    return (
-                      <circle
-                        key={i}
-                        cx={xs[i]} cy={ys[i]}
-                        r={isHovered ? 5 : 3}
-                        fill={isHovered ? "#fff" : color}
-                        stroke={isHovered ? color : "rgba(0,0,0,0.5)"}
-                        strokeWidth={isHovered ? 2 : 1.5}
-                        className="transition-all duration-100"
-                      />
-                    );
-                  })}
-
-                  {/* Vertical crosshair on hover */}
-                  {graphHoverIdx !== null && (
-                    <line
-                      x1={xs[graphHoverIdx]} y1={mt}
-                      x2={xs[graphHoverIdx]} y2={mt + plotH}
-                      stroke="rgba(255,255,255,0.15)" strokeWidth="1" strokeDasharray="3,3"
-                    />
-                  )}
-                </svg>
-
-                {/* HTML tooltip */}
-                {graphHoverIdx !== null && hxPct !== null && hyPct !== null && hPoint && (
-                  <div
-                    className="pointer-events-none absolute"
-                    style={{
-                      left: `clamp(40px, ${hxPct}%, calc(100% - 40px))`,
-                      top: `clamp(8px, ${hyPct}%, calc(100% - 40px))`,
-                      transform: "translate(-50%, -130%)",
+              return (
+                <div className="relative">
+                  <svg
+                    width="100%"
+                    viewBox={`0 0 ${W} ${H}`}
+                    preserveAspectRatio="xMidYMid meet"
+                    className="cursor-crosshair"
+                    onMouseMove={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const xInSvg = ((e.clientX - rect.left) / rect.width) * W;
+                      const nearest = xs.reduce(
+                        (best, x, i) =>
+                          Math.abs(x - xInSvg) < Math.abs(xs[best] - xInSvg)
+                            ? i
+                            : best,
+                        0,
+                      );
+                      setGraphHoverIdx(nearest);
                     }}
+                    onMouseLeave={() => setGraphHoverIdx(null)}
                   >
-                    <div className="px-2.5 py-1.5 rounded-lg bg-black/80 border border-white/15 backdrop-blur-sm text-center">
-                      <p className="text-[10px] text-zinc-400">{hPoint.label}</p>
-                      <p className={`text-sm font-semibold ${isModules ? "text-emerald-400" : "text-blue-400"}`}>
-                        {hVal}{isModules ? " modules" : " / 100"}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+                    <defs>
+                      <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                        <stop
+                          offset="0%"
+                          stopColor={color}
+                          stopOpacity="0.25"
+                        />
+                        <stop offset="100%" stopColor={color} stopOpacity="0" />
+                      </linearGradient>
+                    </defs>
+
+                    {/* Grid */}
+                    {showGridLines &&
+                      yTicks.map((tick, i) => (
+                        <line
+                          key={i}
+                          x1={ml}
+                          y1={yScale(tick)}
+                          x2={W - mr}
+                          y2={yScale(tick)}
+                          stroke="rgba(255,255,255,0.06)"
+                          strokeWidth="1"
+                        />
+                      ))}
+
+                    {/* Axes */}
+                    <line
+                      x1={ml}
+                      y1={mt}
+                      x2={ml}
+                      y2={mt + plotH}
+                      stroke="rgba(255,255,255,0.15)"
+                      strokeWidth="1"
+                    />
+                    <line
+                      x1={ml}
+                      y1={mt + plotH}
+                      x2={W - mr}
+                      y2={mt + plotH}
+                      stroke="rgba(255,255,255,0.15)"
+                      strokeWidth="1"
+                    />
+
+                    {/* Y labels */}
+                    {yTicks.map((tick, i) => (
+                      <text
+                        key={i}
+                        x={ml - 5}
+                        y={yScale(tick) + 3}
+                        textAnchor="end"
+                        fontSize="8"
+                        fill="rgba(161,161,170,0.7)"
+                      >
+                        {tick}
+                      </text>
+                    ))}
+
+                    {/* X labels */}
+                    {xLabels.map((p, i) => {
+                      const idx = graphPoints.findIndex(
+                        (g) => g.date === p.date,
+                      );
+                      return (
+                        <text
+                          key={i}
+                          x={xs[idx]}
+                          y={H - 4}
+                          textAnchor="middle"
+                          fontSize="7.5"
+                          fill="rgba(161,161,170,0.6)"
+                        >
+                          {p.label}
+                        </text>
+                      );
+                    })}
+
+                    {/* Area fill */}
+                    <path d={areaPath} fill={`url(#${gradId})`} />
+
+                    {/* Line */}
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke={color}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+
+                    {/* Dots */}
+                    {graphPoints.map((p, i) => {
+                      const v = values[i];
+                      const isHovered = graphHoverIdx === i;
+                      if (v === 0 && !isHovered) return null;
+                      return (
+                        <circle
+                          key={i}
+                          cx={xs[i]}
+                          cy={ys[i]}
+                          r={isHovered ? 5 : 3}
+                          fill={isHovered ? "#fff" : color}
+                          stroke={isHovered ? color : "rgba(0,0,0,0.5)"}
+                          strokeWidth={isHovered ? 2 : 1.5}
+                          className="transition-all duration-100"
+                        />
+                      );
+                    })}
+
+                    {/* Vertical crosshair on hover */}
+                    {graphHoverIdx !== null && (
+                      <line
+                        x1={xs[graphHoverIdx]}
+                        y1={mt}
+                        x2={xs[graphHoverIdx]}
+                        y2={mt + plotH}
+                        stroke="rgba(255,255,255,0.15)"
+                        strokeWidth="1"
+                        strokeDasharray="3,3"
+                      />
+                    )}
+                  </svg>
+
+                  {/* HTML tooltip */}
+                  {graphHoverIdx !== null &&
+                    hxPct !== null &&
+                    hyPct !== null &&
+                    hPoint && (
+                      <div
+                        className="pointer-events-none absolute"
+                        style={{
+                          left: `clamp(40px, ${hxPct}%, calc(100% - 40px))`,
+                          top: `clamp(8px, ${hyPct}%, calc(100% - 40px))`,
+                          transform: "translate(-50%, -130%)",
+                        }}
+                      >
+                        <div className="px-2.5 py-1.5 rounded-lg bg-black/80 border border-white/15 backdrop-blur-sm text-center">
+                          <p className="text-[10px] text-zinc-400">
+                            {hPoint.label}
+                          </p>
+                          <p
+                            className={`text-sm font-semibold ${isModules ? "text-emerald-400" : "text-blue-400"}`}
+                          >
+                            {hVal}
+                            {isModules ? " modules" : " / 100"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                </div>
+              );
+            })()
+          )}
 
           {/* Legend */}
           <div className="flex items-center gap-4 mt-2">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-0.5 rounded-full bg-emerald-500 inline-block" />
-              <span className="text-[10px] text-zinc-500">Modules completed</span>
+              <span className="text-[10px] text-zinc-500">
+                Modules completed
+              </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-0.5 rounded-full bg-blue-500 inline-block" />
-              <span className="text-[10px] text-zinc-500">Avg readiness score</span>
+              <span className="text-[10px] text-zinc-500">
+                Avg readiness score
+              </span>
             </div>
           </div>
         </div>
@@ -1218,12 +1445,13 @@ export default function Dashboard() {
           {/* Card 1 */}
           <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-8 flex flex-col justify-between min-h-48 hover:bg-white/5 transition-colors cursor-pointer">
             <h3 className="text-base font-semibold text-zinc-100 mb-6 leading-relaxed">
-              45 must know interview questions
+              Get prepared to tackle different interview scenarios
             </h3>
-            <button 
-              onClick={() => router.push("/collections")}
-              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
-              Learn
+            <button
+              onClick={() => router.push("/scenario-practice")}
+              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+            >
+              Practice
             </button>
           </div>
 
@@ -1232,9 +1460,10 @@ export default function Dashboard() {
             <h3 className="text-base font-semibold text-zinc-100 mb-6 leading-relaxed">
               Operating System Essentials
             </h3>
-            <button 
+            <button
               onClick={() => router.push("/collections")}
-              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
+              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+            >
               Learn
             </button>
           </div>
@@ -1242,12 +1471,13 @@ export default function Dashboard() {
           {/* Card 3 */}
           <div className="rounded-2xl border border-white/10 bg-[#111214] px-6 py-8 flex flex-col justify-between min-h-48 hover:bg-white/5 transition-colors cursor-pointer">
             <h3 className="text-base font-semibold text-zinc-100 mb-6 leading-relaxed">
-              Challenge your friends in an interview battle
+              Challenge yourself
             </h3>
-            <button 
-              onClick={() => router.push("/challenge")}
-              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors">
-              view
+            <button
+              onClick={() => router.push("/challenges")}
+              className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+            >
+              Challenge
             </button>
           </div>
         </div>
