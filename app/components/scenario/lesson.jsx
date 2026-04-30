@@ -64,17 +64,23 @@ export default function LessonView({ module, onBack, onComplete }) {
 
       try {
         // Record last activity
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (user) {
-          supabase.from("profiles").update({
-            last_activity: {
-              type: "scenario",
-              label: module.title || "Lesson",
-              module_id: module.id,
-              scenario_id: module.scenario_id ?? null,
-              updated_at: new Date().toISOString(),
-            },
-          }).eq("id", user.id).then(() => {});
+          supabase
+            .from("profiles")
+            .update({
+              last_activity: {
+                type: "scenario",
+                label: module.title || "Lesson",
+                module_id: module.id,
+                scenario_id: module.scenario_id ?? null,
+                updated_at: new Date().toISOString(),
+              },
+            })
+            .eq("id", user.id)
+            .then(() => {});
         }
         // Fetch lessons for this module
         const { data: lessonData, error: lessonError } = await supabase
@@ -721,11 +727,14 @@ export default function LessonView({ module, onBack, onComplete }) {
         });
 
         // Mark module as completed in user_module_progress
-        await supabase.from("user_module_progress").upsert({
-          user_id: authData.user.id,
-          module_id: module.id,
-          completed: true,
-        }, { onConflict: "user_id,module_id" });
+        await supabase.from("user_module_progress").upsert(
+          {
+            user_id: authData.user.id,
+            module_id: module.id,
+            completed: true,
+          },
+          { onConflict: "user_id,module_id" },
+        );
 
         // Update dashboard_graph: increment today's modules_completed
         try {
@@ -736,18 +745,28 @@ export default function LessonView({ module, onBack, onComplete }) {
             .eq("user_id", authData.user.id)
             .maybeSingle();
 
-          const graph =
-            Array.isArray(dashData?.dashboard_graph) ? dashData.dashboard_graph : [];
+          const graph = Array.isArray(dashData?.dashboard_graph)
+            ? dashData.dashboard_graph
+            : [];
           const idx = graph.findIndex((e) => e.date === today);
           if (idx >= 0) {
-            graph[idx] = { ...graph[idx], modules_completed: (graph[idx].modules_completed || 0) + 1 };
+            graph[idx] = {
+              ...graph[idx],
+              modules_completed: (graph[idx].modules_completed || 0) + 1,
+            };
           } else {
             graph.push({ date: today, modules_completed: 1 });
           }
-          await supabase.from("user_dashboards").upsert(
-            { user_id: authData.user.id, dashboard_graph: graph, updated_at: new Date().toISOString() },
-            { onConflict: "user_id" },
-          );
+          await supabase
+            .from("user_dashboards")
+            .upsert(
+              {
+                user_id: authData.user.id,
+                dashboard_graph: graph,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "user_id" },
+            );
         } catch (graphErr) {
           console.warn("Failed to update dashboard_graph:", graphErr);
         }
@@ -874,9 +893,7 @@ export default function LessonView({ module, onBack, onComplete }) {
         {stepType === "explanation" && (
           <div className="bg-white/3 border border-white/8 rounded-2xl p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-medium text-white">
-                Explanation
-              </h3>
+              <h3 className="text-base font-medium text-white">Explanation</h3>
               {/* DEBUG BUTTON: Simulate 100% score */}
               <button
                 onClick={async () => {
@@ -910,7 +927,7 @@ export default function LessonView({ module, onBack, onComplete }) {
                     ratingColor: "emerald",
                   };
                   setFeedback(perfectFeedback);
-                  
+
                   // Save report to user_ai_reports for daily XP calculation
                   try {
                     const { data: authData } = await supabase.auth.getUser();
@@ -924,18 +941,23 @@ export default function LessonView({ module, onBack, onComplete }) {
                       });
 
                       // Mark module as completed in user_module_progress
-                      await supabase.from("user_module_progress").upsert({
-                        user_id: authData.user.id,
-                        module_id: module.id,
-                        completed: true,
-                      }, { onConflict: "user_id,module_id" });
+                      await supabase.from("user_module_progress").upsert(
+                        {
+                          user_id: authData.user.id,
+                          module_id: module.id,
+                          completed: true,
+                        },
+                        { onConflict: "user_id,module_id" },
+                      );
 
-                      console.log("✅ Debug report saved successfully with 150 XP");
+                      console.log(
+                        "✅ Debug report saved successfully with 150 XP",
+                      );
                     }
                   } catch (err) {
                     console.error("❌ Failed to save debug report:", err);
                   }
-                  
+
                   setXpReward(150); // 50 + 100 = 150 XP
                   setShowXPAnimation(true);
                   // Jump to feedback step
@@ -1574,7 +1596,9 @@ export default function LessonView({ module, onBack, onComplete }) {
                 const lastReset = profileData?.daily_xp_reset_date;
                 const isNewDay = !lastReset || lastReset !== today;
                 const currentXP = profileData?.xp || 0;
-                const currentDailyXP = isNewDay ? 0 : (profileData?.daily_xp || 0);
+                const currentDailyXP = isNewDay
+                  ? 0
+                  : profileData?.daily_xp || 0;
                 const newDailyXP = currentDailyXP + xpReward;
 
                 await supabase
@@ -1597,7 +1621,15 @@ export default function LessonView({ module, onBack, onComplete }) {
                 const existingPoints = existingGraphData.chartPoints || [];
 
                 // Build the week's Mon–Sun skeleton if not present or stale
-                const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+                const weekdayLabels = [
+                  "Mon",
+                  "Tue",
+                  "Wed",
+                  "Thu",
+                  "Fri",
+                  "Sat",
+                  "Sun",
+                ];
                 const now = new Date();
                 const mondayOffset = (now.getDay() + 6) % 7;
                 const weekStart = new Date(now);
