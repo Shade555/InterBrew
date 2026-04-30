@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { supabase } from "../../../lib/supabaseClient";
 import { calculateReadinessScore } from "../../../lib/readinessScore";
+import { generateAIReport } from "../../../lib/aiReportGenerator";
 
 function Calendar() {
   const today = new Date();
@@ -593,155 +594,211 @@ export default function Dashboard() {
   const [leaderboardRank, setLeaderboardRank] = useState<number | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [readinessData, setReadinessData] = useState<any>(null);
+  const [previousScore, setPreviousScore] = useState(0); // Add state for previous score
 
   // Graph data fetch removed — now handled by fetchGraph below
 
-  // Fetch AI Report from Groq
+  // Combined data fetching for readiness score and stats
   useEffect(() => {
-    const fetchAiReport = async () => {
+    const fetchData = async () => {
       try {
         setLoadingAiReport(true);
+        setLoadingStats(true);
+
         const {
           data: { user },
-          error: userErr,
         } = await supabase.auth.getUser();
-        if (userErr) throw userErr;
-        const userId = user?.id;
-
-        if (!userId) {
+        if (!user) {
           setAiScore(0);
           setRecommendation("Please log in to see your personalized report.");
           setLoadingAiReport(false);
+          setLoadingStats(false);
           return;
         }
-
-        const response = await fetch("/api/ai-report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error("AI Report API error:", response.status, errorText);
-          throw new Error(`Failed to fetch AI report: ${response.status}`);
-        }
-
-        const data = await response.json();
-        setAiScore(data.score || 0);
-        setRecommendation(data.recommendation || "Keep practicing to improve!");
-      } catch (err) {
-        console.error("Error fetching AI report:", err);
-        setAiScore(65);
-        setRecommendation(
-          "Keep practicing to improve your interview readiness.",
-        );
-      } finally {
-        setLoadingAiReport(false);
-      }
-    };
-
-    fetchAiReport();
-  }, []);
-
-  // Regenerate AI Report
-  const handleRegenerateReport = async () => {
-    try {
-      setRegeneratingReport(true);
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
-      if (userErr) throw userErr;
-      const userId = user?.id;
-
-      if (!userId) return;
-
-      const response = await fetch("/api/ai-report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, forceRefresh: true }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          "AI Report regeneration error:",
-          response.status,
-          errorText,
-        );
-        throw new Error(`Failed to regenerate report: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setAiScore(data.score || 0);
-      setRecommendation(data.recommendation || "Keep practicing to improve!");
-    } catch (err) {
-      console.error("Error regenerating AI report:", err);
-    } finally {
-      setRegeneratingReport(false);
-    }
-  };
-
-  // Fetch quick stats
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        setLoadingStats(true);
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
         const userId = user.id;
 
+        // Fetch all data in parallel
         const [
-          dashRes,
+          collectionModulesRes,
+          scenarioRes,
           profileRes,
-          scenarioProgressRes,
-          collectionProgressRes,
+          userCollectionsCompletedRes,
+          userScenariosCompletedRes,
+          dashRes,
           lbRes,
         ] = await Promise.all([
+          supabase
+            .from("collection_modules")
+            .select("id", { count: "exact", head: true }),
+          supabase
+            .from("scenarios")
+            .select("id", { count: "exact", head: true }),
+          supabase
+            .from("profiles")
+            .select("xp, interviews_taken")
+            .eq("id", userId)
+            .single(),
+          supabase
+            .from("user_collection_module_progress")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", userId)
+            .eq("completed", true),
+          supabase
+            .from("user_scenario_progress")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", userId)
+            .eq("completed", true),
           supabase
             .from("user_dashboards")
             .select("streak")
             .eq("user_id", userId)
             .maybeSingle(),
-          supabase.from("profiles").select("xp").eq("id", userId).maybeSingle(),
-          supabase
-            .from("user_module_progress")
-            .select("module_id", { count: "exact", head: true })
-            .eq("user_id", userId)
-            .eq("completed", true),
-          supabase
-            .from("user_collection_module_progress")
-            .select("module_id", { count: "exact", head: true })
-            .eq("user_id", userId)
-            .eq("completed", true),
           supabase
             .from("leaderboard")
             .select("user_id")
             .order("total_score", { ascending: false }),
         ]);
 
-        setStreak(dashRes.data?.streak ?? 0);
-        setTotalXp(Number(profileRes.data?.xp) || 0);
+        // --- Readiness Score Calculation ---
+        const totalCollectionModules = collectionModulesRes.count || 0;
+        const totalScenarios = scenarioRes.count || 0;
+        const userCollectionsCompleted = userCollectionsCompletedRes.count || 0;
+        const userScenariosCompleted = userScenariosCompletedRes.count || 0;
 
-        const scenarioCount = (scenarioProgressRes as any).count ?? 0;
-        const collectionCount = (collectionProgressRes as any).count ?? 0;
-        setModulesCompleted(scenarioCount + collectionCount);
+        const totalModules = totalCollectionModules + totalScenarios;
+        const completedModules =
+          userCollectionsCompleted + userScenariosCompleted;
+
+        const readinessInput = {
+          lessons_completed: userCollectionsCompleted, // Only collection modules
+          total_lessons: totalCollectionModules, // Only collection modules total
+          scenarios_completed: userScenariosCompleted,
+          total_scenarios: totalScenarios,
+          interviews_completed: profileRes.data?.interviews_taken || 0,
+          total_interviews: 10,
+          xp: profileRes.data?.xp || 0,
+          max_xp: 5000,
+        };
+
+        const readinessResult = calculateReadinessScore(readinessInput);
+        setReadinessData(readinessResult);
+        setAiScore(readinessResult.readiness_score);
+
+        const reportResult = generateAIReport({
+          ...readinessResult,
+          previous_score: previousScore,
+          lessons_completed: userCollectionsCompleted,
+          total_lessons: totalCollectionModules,
+          scenarios_completed: userScenariosCompleted,
+          total_scenarios: totalScenarios,
+          interviews_completed: profileRes.data?.interviews_taken || 0,
+          total_interviews: 10,
+          xp: profileRes.data?.xp || 0,
+          max_xp: 5000,
+        });
+        setRecommendation(reportResult.report_text);
+
+        // --- Quick Stats Calculation ---
+        setStreak(dashRes.data?.streak ?? 0);
+        setTotalXp(readinessInput.xp);
+        setModulesCompleted(completedModules);
 
         if (lbRes.data) {
           const rank = lbRes.data.findIndex((r: any) => r.user_id === userId);
           setLeaderboardRank(rank >= 0 ? rank + 1 : null);
         }
-      } catch (err) {
-        console.error("Error fetching stats:", err);
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        setAiScore(0);
+        setRecommendation(
+          "Could not load your report. Please try again later.",
+        );
       } finally {
+        setLoadingAiReport(false);
         setLoadingStats(false);
       }
     };
-    fetchStats();
-  }, []);
+
+    fetchData();
+  }, [previousScore]);
+
+  const handleRegenerateReport = async () => {
+    try {
+      setRegeneratingReport(true);
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) return;
+      const userId = user.id;
+
+      // Re-fetch fresh data
+      const [
+        collectionModulesRes,
+        scenarioRes,
+        profileRes,
+        userCollectionsCompletedRes,
+        userScenariosCompletedRes,
+      ] = await Promise.all([
+        supabase
+          .from("collection_modules")
+          .select("id", { count: "exact", head: true }),
+        supabase.from("scenarios").select("id", { count: "exact", head: true }),
+        supabase
+          .from("profiles")
+          .select("xp, interviews_taken")
+          .eq("id", userId)
+          .single(),
+        supabase
+          .from("user_collection_module_progress")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("completed", true),
+        supabase
+          .from("user_scenario_progress")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("completed", true),
+      ]);
+
+      const totalCollectionModules = collectionModulesRes.count || 0;
+      const totalScenarios = scenarioRes.count || 0;
+      const userCollectionsCompleted = userCollectionsCompletedRes.count || 0;
+      const userScenariosCompleted = userScenariosCompletedRes.count || 0;
+
+      const readinessInput = {
+        lessons_completed: userCollectionsCompleted,
+        total_lessons: totalCollectionModules,
+        scenarios_completed: userScenariosCompleted,
+        total_scenarios: totalScenarios,
+        interviews_completed: profileRes.data?.interviews_taken || 0,
+        total_interviews: 10,
+        xp: profileRes.data?.xp || 0,
+        max_xp: 5000,
+      };
+
+      const readinessResult = calculateReadinessScore(readinessInput);
+      setReadinessData(readinessResult);
+      setAiScore(readinessResult.readiness_score);
+
+      const reportResult = generateAIReport({
+        ...readinessResult,
+        previous_score: previousScore,
+        lessons_completed: userCollectionsCompleted,
+        total_lessons: totalCollectionModules,
+        scenarios_completed: userScenariosCompleted,
+        total_scenarios: totalScenarios,
+        interviews_completed: profileRes.data?.interviews_taken || 0,
+        total_interviews: 10,
+        xp: profileRes.data?.xp || 0,
+        max_xp: 5000,
+      });
+      setRecommendation(reportResult.report_text);
+    } catch (error) {
+      console.error("Error regenerating report:", error);
+    } finally {
+      setRegeneratingReport(false);
+    }
+  };
 
   // Fetch graph data: last 14 days of modules_completed + readiness scores
   useEffect(() => {
