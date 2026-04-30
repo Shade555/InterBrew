@@ -677,7 +677,7 @@ export default function Dashboard() {
           interviews_completed: profileRes.data?.interviews_taken || 0,
           total_interviews: 10,
           xp: profileRes.data?.xp || 0,
-          max_xp: 5000,
+          max_xp: 10000,
         };
 
         const readinessResult = calculateReadinessScore(readinessInput);
@@ -694,7 +694,7 @@ export default function Dashboard() {
           interviews_completed: profileRes.data?.interviews_taken || 0,
           total_interviews: 10,
           xp: profileRes.data?.xp || 0,
-          max_xp: 5000,
+          max_xp: 10000,
         });
         setRecommendation(reportResult.report_text);
 
@@ -767,7 +767,7 @@ export default function Dashboard() {
         interviews_completed: profileRes.data?.interviews_taken || 0,
         total_interviews: 10,
         xp: profileRes.data?.xp || 0,
-        max_xp: 5000,
+        max_xp: 10000,
       };
 
       const readinessResult = calculateReadinessScore(readinessInput);
@@ -784,7 +784,7 @@ export default function Dashboard() {
         interviews_completed: profileRes.data?.interviews_taken || 0,
         total_interviews: 10,
         xp: profileRes.data?.xp || 0,
-        max_xp: 5000,
+        max_xp: 10000,
       });
       setRecommendation(reportResult.report_text);
     } catch (error) {

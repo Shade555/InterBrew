@@ -79,13 +79,9 @@ export const calculateReadinessScore = (
   // 2. Compute final readiness_score using weights
   // Interviews are primary (40%)
   // Lessons are secondary (25%)
-  // Scenarios are tertiary (20%)
-  // XP is a bonus metric (15%)
+  // XP is a bonus metric (35%)
   const readiness_score =
-    lesson_score * 0.25 +
-    scenario_score * 0.2 +
-    interview_score * 0.4 +
-    xp_score * 0.15;
+    lesson_score * 0.25 + interview_score * 0.4 + xp_score * 0.35;
 
   // 3. Assign readiness_level
   const readiness_level = getReadinessLevel(readiness_score);
