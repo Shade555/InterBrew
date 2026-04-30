@@ -644,7 +644,7 @@ export default function Dashboard() {
             .eq("user_id", userId)
             .eq("completed", true),
           supabase
-            .from("user_scenario_progress")
+            .from("user_module_progress")
             .select("*", { count: "exact", head: true })
             .eq("user_id", userId)
             .eq("completed", true),
@@ -731,18 +731,12 @@ export default function Dashboard() {
       if (!user) return;
       const userId = user.id;
 
-      // Re-fetch fresh data
+      // Re-fetch only user progress data (counts don't change)
       const [
-        collectionModulesRes,
-        scenarioRes,
         profileRes,
         userCollectionsCompletedRes,
         userScenariosCompletedRes,
       ] = await Promise.all([
-        supabase
-          .from("collection_modules")
-          .select("id", { count: "exact", head: true }),
-        supabase.from("scenarios").select("id", { count: "exact", head: true }),
         supabase
           .from("profiles")
           .select("xp, interviews_taken")
@@ -754,22 +748,22 @@ export default function Dashboard() {
           .eq("user_id", userId)
           .eq("completed", true),
         supabase
-          .from("user_scenario_progress")
+          .from("user_module_progress")
           .select("*", { count: "exact", head: true })
           .eq("user_id", userId)
           .eq("completed", true),
       ]);
 
-      const totalCollectionModules = collectionModulesRes.count || 0;
-      const totalScenarios = scenarioRes.count || 0;
       const userCollectionsCompleted = userCollectionsCompletedRes.count || 0;
       const userScenariosCompleted = userScenariosCompletedRes.count || 0;
+      const completedModules =
+        userCollectionsCompleted + userScenariosCompleted;
 
       const readinessInput = {
-        lessons_completed: userCollectionsCompleted,
-        total_lessons: totalCollectionModules,
+        lessons_completed: completedModules,
+        total_lessons: 147,
         scenarios_completed: userScenariosCompleted,
-        total_scenarios: totalScenarios,
+        total_scenarios: 10,
         interviews_completed: profileRes.data?.interviews_taken || 0,
         total_interviews: 10,
         xp: profileRes.data?.xp || 0,
@@ -783,10 +777,10 @@ export default function Dashboard() {
       const reportResult = generateAIReport({
         ...readinessResult,
         previous_score: previousScore,
-        lessons_completed: userCollectionsCompleted,
-        total_lessons: totalCollectionModules,
+        lessons_completed: completedModules,
+        total_lessons: 147,
         scenarios_completed: userScenariosCompleted,
-        total_scenarios: totalScenarios,
+        total_scenarios: 10,
         interviews_completed: profileRes.data?.interviews_taken || 0,
         total_interviews: 10,
         xp: profileRes.data?.xp || 0,

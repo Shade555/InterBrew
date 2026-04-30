@@ -549,8 +549,13 @@ export default function Collections({
   const [userId, setUserId] = useState<string | null>(null);
   const [userName, setUserName] = useState<string>("User");
   const [badgeCount, setBadgeCount] = useState<number>(0);
-  const [earnedInterviewCerts, setEarnedInterviewCerts] = useState<Set<string>>(new Set());
-  const [unlockAnim, setUnlockAnim] = useState<{ icon: string; name: string } | null>(null);
+  const [earnedInterviewCerts, setEarnedInterviewCerts] = useState<Set<string>>(
+    new Set(),
+  );
+  const [unlockAnim, setUnlockAnim] = useState<{
+    icon: string;
+    name: string;
+  } | null>(null);
   const [certAnim, setCertAnim] = useState<string | null>(null);
   const router = useRouter();
   const [dataError, setDataError] = useState<string>("");
@@ -635,7 +640,9 @@ export default function Collections({
               setUserName(profileData.full_name);
             }
             if (active && profileData?.badges) {
-              const badgesArray = Array.isArray(profileData.badges) ? profileData.badges : [];
+              const badgesArray = Array.isArray(profileData.badges)
+                ? profileData.badges
+                : [];
               setBadgeCount(badgesArray.length);
             }
           } catch (err) {
@@ -652,8 +659,8 @@ export default function Collections({
             if (active && certsData) {
               const earned = new Set<string>(
                 certsData.map((c: { title: string }) =>
-                  c.title.replace(" — Mock Interview", "")
-                )
+                  c.title.replace(" — Mock Interview", ""),
+                ),
               );
               setEarnedInterviewCerts(earned);
             }
@@ -704,11 +711,11 @@ export default function Collections({
         let modulesData: any[] | null = null;
         let modulesErr: any = null;
 
-        // Try fetching with content column
+        // Fetch collection modules
         ({ data: modulesData, error: modulesErr } = await supabase
           .from("collection_modules")
           .select(
-            "id, title, difficulty, section_key, section_id, completed, content, order_number, collection_sections(section_key)",
+            "id, title, difficulty, section_key, section_id, completed, content, order_number",
           )
           .order("order_number", { ascending: true }));
 
@@ -717,7 +724,7 @@ export default function Collections({
           const retry = await supabase
             .from("collection_modules")
             .select(
-              "id, title, difficulty, section_key, section_id, completed, order_number, collection_sections(section_key)",
+              "id, title, difficulty, section_key, section_id, completed, order_number",
             )
             .order("order_number", { ascending: true });
           modulesData = retry.data;
@@ -1005,12 +1012,14 @@ export default function Collections({
       if (!sectionKey) return;
 
       // Get both possible IDs (real DB id and fallback id)
-      const dbBadgeId = (await supabase
-        .from("collection_badges")
-        .select("id")
-        .eq("section_key", sectionKey)
-        .maybeSingle()
-      ).data?.id ?? null;
+      const dbBadgeId =
+        (
+          await supabase
+            .from("collection_badges")
+            .select("id")
+            .eq("section_key", sectionKey)
+            .maybeSingle()
+        ).data?.id ?? null;
 
       const fallbackId = `fallback-${sectionKey}`;
 
@@ -1020,11 +1029,18 @@ export default function Collections({
         .eq("id", userId)
         .maybeSingle();
 
-      const currentBadges: any[] = Array.isArray(profileData?.badges) ? profileData.badges : [];
-      const filtered = currentBadges.filter((b: any) => b.id !== dbBadgeId && b.id !== fallbackId);
+      const currentBadges: any[] = Array.isArray(profileData?.badges)
+        ? profileData.badges
+        : [];
+      const filtered = currentBadges.filter(
+        (b: any) => b.id !== dbBadgeId && b.id !== fallbackId,
+      );
 
       if (filtered.length !== currentBadges.length) {
-        await supabase.from("profiles").update({ badges: filtered }).eq("id", userId);
+        await supabase
+          .from("profiles")
+          .update({ badges: filtered })
+          .eq("id", userId);
         console.log("[revoke] removed badge for section:", sectionKey);
       }
     } catch (err) {
@@ -1033,7 +1049,10 @@ export default function Collections({
   }
 
   async function unlockBadgeForCompletedSection(moduleId: string) {
-    if (!userId) { console.log("[badge] no userId, aborting"); return; }
+    if (!userId) {
+      console.log("[badge] no userId, aborting");
+      return;
+    }
 
     try {
       const { data: moduleRow, error: moduleErr } = await supabase
@@ -1041,24 +1060,46 @@ export default function Collections({
         .select("section_key, section_id")
         .eq("id", moduleId)
         .maybeSingle();
-      if (moduleErr) { console.error("[badge] Step 1 failed:", moduleErr?.message); throw moduleErr; }
+      if (moduleErr) {
+        console.error("[badge] Step 1 failed:", moduleErr?.message);
+        throw moduleErr;
+      }
 
       const sectionKey = moduleRow?.section_key;
       const sectionId = moduleRow?.section_id;
-      console.log("[badge] module:", moduleId, "sectionKey:", sectionKey, "sectionId:", sectionId);
-      if (!sectionKey && !sectionId) { console.log("[badge] no section info, aborting"); return; }
-      if (!sectionKey) { console.log("[badge] no section_key, aborting"); return; }
+      console.log(
+        "[badge] module:",
+        moduleId,
+        "sectionKey:",
+        sectionKey,
+        "sectionId:",
+        sectionId,
+      );
+      if (!sectionKey && !sectionId) {
+        console.log("[badge] no section info, aborting");
+        return;
+      }
+      if (!sectionKey) {
+        console.log("[badge] no section_key, aborting");
+        return;
+      }
 
       let modulesQuery = supabase.from("collection_modules").select("id");
       if (sectionId) modulesQuery = modulesQuery.eq("section_id", sectionId);
       else modulesQuery = modulesQuery.eq("section_key", sectionKey);
 
-      const { data: sectionModules, error: sectionModulesErr } = await modulesQuery;
+      const { data: sectionModules, error: sectionModulesErr } =
+        await modulesQuery;
       if (sectionModulesErr) throw sectionModulesErr;
 
-      const sectionModuleIds = (sectionModules ?? []).map((row: { id: string }) => row.id);
+      const sectionModuleIds = (sectionModules ?? []).map(
+        (row: { id: string }) => row.id,
+      );
       console.log("[badge] total modules in section:", sectionModuleIds.length);
-      if (sectionModuleIds.length === 0) { console.log("[badge] no modules found, aborting"); return; }
+      if (sectionModuleIds.length === 0) {
+        console.log("[badge] no modules found, aborting");
+        return;
+      }
 
       const { data: completedRows, error: completedErr } = await supabase
         .from("user_collection_module_progress")
@@ -1069,42 +1110,90 @@ export default function Collections({
       if (completedErr) throw completedErr;
 
       const completedCount = (completedRows ?? []).length;
-      console.log("[badge] completed:", completedCount, "/", sectionModuleIds.length);
-      if (completedCount !== sectionModuleIds.length) { console.log("[badge] not all done yet, aborting"); return; }
+      console.log(
+        "[badge] completed:",
+        completedCount,
+        "/",
+        sectionModuleIds.length,
+      );
+      if (completedCount !== sectionModuleIds.length) {
+        console.log("[badge] not all done yet, aborting");
+        return;
+      }
 
       const { data: badgeRows, error: badgeLookupErr } = await supabase
         .from("collection_badges")
         .select("id, label, image_url")
         .eq("section_key", sectionKey)
         .limit(1);
-      if (badgeLookupErr) { console.error("[badge] Step 5 failed:", badgeLookupErr?.message); throw badgeLookupErr; }
+      if (badgeLookupErr) {
+        console.error("[badge] Step 5 failed:", badgeLookupErr?.message);
+        throw badgeLookupErr;
+      }
 
       const badgeRow = badgeRows?.[0];
       console.log("[badge] badge row from DB:", badgeRow);
 
       // If no badge in DB, use frontend fallback mapping
-      const fallbackBadgeMap: Record<string, { label: string; image_url: string }> = {
-        "foundation":                          { label: "Foundation",       image_url: "/images/Foundation.png" },
-        "command-line":                        { label: "Command Line",     image_url: "/images/Command%20Line.png" },
-        "cpu-scheduling":                      { label: "Scheduling",       image_url: "/images/Scheduling.png" },
-        "thread-management":                   { label: "Concurrency",      image_url: "/images/Concurrency.png" },
-        "memory-management-virtual-memory":    { label: "Memory",           image_url: "/images/Memory.png" },
-        "protection-security":                 { label: "Interview - Ready",image_url: "/images/Interview%20-%20Ready.png" },
+      const fallbackBadgeMap: Record<
+        string,
+        { label: string; image_url: string }
+      > = {
+        foundation: {
+          label: "Foundation",
+          image_url: "/images/Foundation.png",
+        },
+        "command-line": {
+          label: "Command Line",
+          image_url: "/images/Command%20Line.png",
+        },
+        "cpu-scheduling": {
+          label: "Scheduling",
+          image_url: "/images/Scheduling.png",
+        },
+        "thread-management": {
+          label: "Concurrency",
+          image_url: "/images/Concurrency.png",
+        },
+        "memory-management-virtual-memory": {
+          label: "Memory",
+          image_url: "/images/Memory.png",
+        },
+        "protection-security": {
+          label: "Interview - Ready",
+          image_url: "/images/Interview%20-%20Ready.png",
+        },
       };
 
-      const resolvedBadge = badgeRow ?? (sectionKey ? { id: `fallback-${sectionKey}`, ...fallbackBadgeMap[sectionKey] } : null);
+      const resolvedBadge =
+        badgeRow ??
+        (sectionKey
+          ? { id: `fallback-${sectionKey}`, ...fallbackBadgeMap[sectionKey] }
+          : null);
       console.log("[badge] resolved badge:", resolvedBadge);
-      if (!resolvedBadge?.label) { console.log("[badge] no badge for section_key:", sectionKey); return; }
+      if (!resolvedBadge?.label) {
+        console.log("[badge] no badge for section_key:", sectionKey);
+        return;
+      }
 
-      const badgeId = (badgeRow?.id) ?? `fallback-${sectionKey}`;
+      const badgeId = badgeRow?.id ?? `fallback-${sectionKey}`;
 
       // Only upsert to user_badges if we have a real DB badge (not a fallback)
       if (badgeRow?.id) {
-        const { error: badgeErr } = await supabase.from("user_badges").upsert(
-          { user_id: userId, badge_id: badgeId, unlocked_at: new Date().toISOString() },
-          { onConflict: "user_id,badge_id", ignoreDuplicates: true },
-        );
-        if (badgeErr) { console.error("[badge] Step 6 upsert failed:", badgeErr?.message); throw badgeErr; }
+        const { error: badgeErr } = await supabase
+          .from("user_badges")
+          .upsert(
+            {
+              user_id: userId,
+              badge_id: badgeId,
+              unlocked_at: new Date().toISOString(),
+            },
+            { onConflict: "user_id,badge_id", ignoreDuplicates: true },
+          );
+        if (badgeErr) {
+          console.error("[badge] Step 6 upsert failed:", badgeErr?.message);
+          throw badgeErr;
+        }
       }
 
       // Update profiles.badges JSONB column
@@ -1130,15 +1219,24 @@ export default function Collections({
           .eq("id", userId);
 
         if (profileErr) {
-          console.error("[badge] profiles.badges update failed:", profileErr?.message);
+          console.error(
+            "[badge] profiles.badges update failed:",
+            profileErr?.message,
+          );
           return;
         }
       }
 
       // Always play the animation when section is fully completed
-      setUnlockAnim({ icon: resolvedBadge.image_url, name: resolvedBadge.label });
+      setUnlockAnim({
+        icon: resolvedBadge.image_url,
+        name: resolvedBadge.label,
+      });
     } catch (err) {
-      console.error("[badge] unlockBadgeForCompletedSection error:", err instanceof Error ? err.message : String(err));
+      console.error(
+        "[badge] unlockBadgeForCompletedSection error:",
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -1181,16 +1279,20 @@ export default function Collections({
 
     // Record last activity
     if (userId && supabase) {
-      supabase.from("profiles").update({
-        last_activity: {
-          type: "collection_problem",
-          label: problem,
-          module_id: moduleId,
-          section_key: sectionKey ?? null,
-          section_title: sectionTitle ?? null,
-          updated_at: new Date().toISOString(),
-        },
-      }).eq("id", userId).then(() => {});
+      supabase
+        .from("profiles")
+        .update({
+          last_activity: {
+            type: "collection_problem",
+            label: problem,
+            module_id: moduleId,
+            section_key: sectionKey ?? null,
+            section_title: sectionTitle ?? null,
+            updated_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", userId)
+        .then(() => {});
     }
 
     // Update current module in dashboard via API
@@ -1226,7 +1328,10 @@ export default function Collections({
     });
   }
 
-  function launchSectionMockInterview(sectionTopic: string, sectionTitle?: string) {
+  function launchSectionMockInterview(
+    sectionTopic: string,
+    sectionTitle?: string,
+  ) {
     setInterviewIntroPopup(null);
     setPanelMode("interview");
     setActiveModuleId(null);
@@ -1235,15 +1340,19 @@ export default function Collections({
 
     // Record last activity
     if (userId && supabase) {
-      supabase.from("profiles").update({
-        last_activity: {
-          type: "collection_mock",
-          label: `${sectionTitle ?? sectionTopic} Mock Interview`,
-          section_key: sectionTopic,
-          section_title: sectionTitle ?? sectionTopic,
-          updated_at: new Date().toISOString(),
-        },
-      }).eq("id", userId).then(() => {});
+      supabase
+        .from("profiles")
+        .update({
+          last_activity: {
+            type: "collection_mock",
+            label: `${sectionTitle ?? sectionTopic} Mock Interview`,
+            section_key: sectionTopic,
+            section_title: sectionTitle ?? sectionTopic,
+            updated_at: new Date().toISOString(),
+          },
+        })
+        .eq("id", userId)
+        .then(() => {});
     }
   }
 
@@ -1714,7 +1823,12 @@ export default function Collections({
                   onClick={pickRandomProblem}
                   className="h-11 w-full rounded-2xl border border-white/10 bg-[#121417] px-4 text-sm text-zinc-200 hover:bg-white/10 transition-colors flex items-center justify-center gap-2 whitespace-nowrap md:col-span-4"
                 >
-                  <img src="/images/dice.svg" alt="" className="h-4 w-4" aria-hidden="true" />
+                  <img
+                    src="/images/dice.svg"
+                    alt=""
+                    className="h-4 w-4"
+                    aria-hidden="true"
+                  />
                   Random Problem
                 </button>
               </div>
@@ -1895,7 +2009,13 @@ export default function Collections({
                                 <td className="px-5 py-3 text-center align-middle">
                                   <button
                                     onClick={() =>
-                                      startSolve(it.id, it.name, it.difficulty, section.title, section.sectionKey)
+                                      startSolve(
+                                        it.id,
+                                        it.name,
+                                        it.difficulty,
+                                        section.title,
+                                        section.sectionKey,
+                                      )
                                     }
                                     className="inline-flex h-9 items-center justify-center rounded-md border border-emerald-500/40 bg-emerald-500/10 px-4 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
                                   >
@@ -2018,14 +2138,24 @@ export default function Collections({
                           }}
                           disabled={sectionSolved < sectionItems.length}
                           className={`inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm transition-colors ${
-                            sectionSolved === sectionItems.length && sectionItems.length > 0
+                            sectionSolved === sectionItems.length &&
+                            sectionItems.length > 0
                               ? "border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20"
                               : "border-gray-500/40 bg-gray-500/10 text-gray-400 cursor-not-allowed opacity-50"
                           }`}
-                          title={sectionSolved < sectionItems.length ? "Complete all questions in this section first" : ""}
+                          title={
+                            sectionSolved < sectionItems.length
+                              ? "Complete all questions in this section first"
+                              : ""
+                          }
                         >
-                          {earnedInterviewCerts.has(section.title || humanizeSectionTitle(section.sectionKey)) && (
-                            <span className="text-emerald-400 text-base leading-none">✓</span>
+                          {earnedInterviewCerts.has(
+                            section.title ||
+                              humanizeSectionTitle(section.sectionKey),
+                          ) && (
+                            <span className="text-emerald-400 text-base leading-none">
+                              ✓
+                            </span>
                           )}
                           Mock Interview
                         </button>
@@ -2069,7 +2199,9 @@ export default function Collections({
                 <div className="text-xl font-semibold text-zinc-100">
                   {userName}
                 </div>
-                <div className="text-sm text-zinc-300">{badgeCount} Badge{badgeCount !== 1 ? 's' : ''}</div>
+                <div className="text-sm text-zinc-300">
+                  {badgeCount} Badge{badgeCount !== 1 ? "s" : ""}
+                </div>
               </div>
             </div>
 
@@ -2323,7 +2455,9 @@ export default function Collections({
           }}
           onInterviewComplete={(completedTopic: string) => {
             awardInterviewCertification(completedTopic);
-            setEarnedInterviewCerts((prev) => new Set(prev).add(completedTopic));
+            setEarnedInterviewCerts((prev) =>
+              new Set(prev).add(completedTopic),
+            );
             setCertAnim(`${completedTopic} — Mock Interview`);
           }}
           onClose={() => {
@@ -2358,7 +2492,10 @@ export default function Collections({
               <button
                 type="button"
                 onClick={() =>
-                  launchSectionMockInterview(interviewIntroPopup.sectionTopic, interviewIntroPopup.sectionTitle)
+                  launchSectionMockInterview(
+                    interviewIntroPopup.sectionTopic,
+                    interviewIntroPopup.sectionTitle,
+                  )
                 }
                 className="inline-flex h-10 items-center justify-center rounded-md border border-blue-500/40 bg-blue-500/10 px-4 text-sm text-blue-300 hover:bg-blue-500/20 transition-colors"
               >
