@@ -19,7 +19,7 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, forceRefresh } = await req.json();
+    const { userId, forceRefresh, readinessScore } = await req.json();
 
     if (!userId) {
       return NextResponse.json(
@@ -189,11 +189,13 @@ Be encouraging but honest. Consider that:
     const recommendation = parsed.recommendation;
 
     // Store the new report in database for 7-day cache
+    // Use readinessScore if provided, otherwise use the Groq-generated score
+    const finalScore = readinessScore !== undefined ? readinessScore : score;
     try {
       const { data, error: insertError } = await supabaseAdmin.from("user_ai_reports").insert([
         {
           user_id: userId,
-          score: score,
+          score: finalScore,
           recommendation: recommendation,
           created_at: new Date().toISOString(),
         },

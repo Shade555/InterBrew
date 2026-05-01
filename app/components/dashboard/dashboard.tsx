@@ -684,6 +684,21 @@ export default function Dashboard() {
         setReadinessData(readinessResult);
         setAiScore(readinessResult.readiness_score);
 
+        // Save readiness score to database
+        try {
+          await fetch("/api/ai-report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              userId: userId,
+              readinessScore: readinessResult.readiness_score,
+              forceRefresh: true,
+            }),
+          });
+        } catch (error) {
+          console.error("Error saving readiness score:", error);
+        }
+
         const reportResult = generateAIReport({
           ...readinessResult,
           previous_score: previousScore,
@@ -773,6 +788,21 @@ export default function Dashboard() {
       const readinessResult = calculateReadinessScore(readinessInput);
       setReadinessData(readinessResult);
       setAiScore(readinessResult.readiness_score);
+
+      // Save readiness score to database
+      try {
+        await fetch("/api/ai-report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: userId,
+            readinessScore: readinessResult.readiness_score,
+            forceRefresh: true,
+          }),
+        });
+      } catch (error) {
+        console.error("Error saving readiness score:", error);
+      }
 
       const reportResult = generateAIReport({
         ...readinessResult,
