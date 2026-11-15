@@ -85,21 +85,25 @@ Do not use the service-role key in browser code. Supabase client requests made w
 2. In the Supabase dashboard, open **SQL Editor**.
 3. Run the scripts below one at a time. Stop if a script reports a missing prerequisite rather than ignoring the error:
 
-   1. `scripts/create_collections_table.sql`
-   2. `scripts/create_dashboard_table.sql`
-   3. `scripts/create_user_interviews_table.sql`
-   4. `scripts/create_user_ai_reports_table.sql`
-   5. `scripts/create_user_module_progress_table.sql` (requires the application's `modules` table)
-   6. `scripts/create_user_dashboard_trigger.sql`
-   7. `scripts/create_user_interviews_policies.sql`
-   8. `scripts/create_collection_resources_policies.sql` (requires `collection_resources`)
-   9. `scripts/alter_readiness_to_jsonb.sql` (only for an existing numeric `readiness_score`)
-   10. `scripts/add_streak_column.sql`
-   11. `scripts/add_readiness_breakdown.sql`
-   12. `scripts/add_daily_xp_to_user_ai_reports.sql`
-   13. `scripts/update_leaderboard_categories.sql` (requires `leaderboard`)
+   1. `scripts/create_learning_tables.sql`
+   2. `scripts/create_collections_table.sql`
+   3. `scripts/create_collections_support_tables.sql`
+   4. `scripts/create_challenge_tables.sql`
+   5. `scripts/create_dashboard_table.sql`
+   6. `scripts/create_legacy_user_dashboard.sql`
+   7. `scripts/create_user_interviews_table.sql`
+   8. `scripts/create_user_ai_reports_table.sql`
+   9. `scripts/create_user_module_progress_table.sql`
+   10. `scripts/create_user_dashboard_trigger.sql`
+   11. `scripts/create_user_interviews_policies.sql`
+   12. `scripts/create_collection_resources_policies.sql`
+   13. `scripts/alter_readiness_to_jsonb.sql` (only for an existing numeric `readiness_score`)
+   14. `scripts/add_streak_column.sql`
+   15. `scripts/add_readiness_breakdown.sql`
+   16. `scripts/add_daily_xp_to_user_ai_reports.sql`
+   17. `scripts/update_leaderboard_categories.sql`
 
-   These scripts are incremental SQL migrations, not a fully isolated database schema. A contributor working from a brand-new Supabase project may need the project's existing `modules`, `collection_modules`, `collection_resources`, `leaderboard`, and related tables before running dependent scripts.
+   The first four schema scripts create the application tables that were previously referenced by the codebase but had no repository schema script. The remaining scripts apply existing incremental migrations and policies. These scripts create the tables and columns required by the current application, but they do not seed learning content, collection content, challenge rows, or badges.
 
 4. Confirm that the tables used by the feature you are changing exist and that its RLS policies allow the intended authenticated user access.
 5. For local sample data, run the collection seed after the `collections` table exists:
