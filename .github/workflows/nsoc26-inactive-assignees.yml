@@ -1,0 +1,72 @@
+name: Unassign inactive NSOC26 issues
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  unassign-inactive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Unassign inactive issues after seven days
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "nsoc26",
+              per_page: 100
+            });
+
+            for (const issue of issues) {
+              if (!issue.pull_request) {
+                for (const assignee of issue.assignees || []) {
+                  const events = await github.paginate(github.rest.issues.listEvents, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    per_page: 100
+                  });
+                  const assignments = events
+                    .filter(event => event.event === "assigned" && event.assignee?.login === assignee.login)
+                    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+                  const openPullRequests = await github.paginate(github.rest.pulls.list, {
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    state: "open",
+                    per_page: 100
+                  });
+                  const hasAssigneePullRequest = openPullRequests.some(pr =>
+                    pr.user?.login === assignee.login &&
+                    (pr.body || "").match(new RegExp(`(?:fixes|closes|resolves)[^#]*#${issue.number}\\b`, "i"))
+                  );
+                  const lastIssueUpdate = new Date(issue.updated_at).getTime();
+
+                  if (assignments.length > 0 &&
+                      new Date(assignments[0].created_at).getTime() < cutoff &&
+                      lastIssueUpdate < cutoff &&
+                      !hasAssigneePullRequest) {
+                    await github.rest.issues.removeAssignees({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.number,
+                      assignees: [assignee.login]
+                    });
+                    await github.rest.issues.createComment({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      issue_number: issue.number,
+                      body: `@${assignee.login} has been automatically unassigned after 7 days without an accepted update or pull request. The issue is available for reassignment.`
+                    });
+                  }
+                }
+              }
+            }

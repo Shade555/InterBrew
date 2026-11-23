@@ -1,5 +1,7 @@
 # InterBrew
 
+> Participating project for [Nexus Spring of Code](https://github.com/nexus-spring-of-code).
+
 > AI-powered, gamified interview preparation across the technology domain.
 
 InterBrew is a technology interview-preparation platform that combines structured learning, mock interviews, interactive challenges, and performance analytics in one Next.js application. It is designed to help learners build practical understanding and interview confidence across domains such as Data Structures and Algorithms, Operating Systems, Computer Networks, databases, frontend and backend development, cloud, security, and other software-engineering topics.

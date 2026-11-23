@@ -8,6 +8,7 @@ Thank you for helping improve InterBrew. Please keep contributions focused, test
 2. For a bug, use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md).
 3. For a new idea, use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md).
 4. Do not include credentials, tokens, private user data, or `.env` files in issues or commits.
+5. For [Nexus Spring of Code](https://github.com/nexus-spring-of-code), wait for an issue to be assigned to you before opening a PR. NSOC26 contributions use `nsoc26`, with `level1`, `level2`, or `level3` describing the contribution's difficulty.
 
 ## Development Prerequisites
 

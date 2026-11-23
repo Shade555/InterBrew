@@ -1,0 +1,55 @@
+name: NSOC26 pull request policy
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check issue assignment and NSOC26 labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || "";
+            const issueMatch = body.match(/(?:fixes|closes|resolves)\s*#(\d+)/i);
+
+            if (!issueMatch) {
+              core.setFailed("Link an assigned NSOC26 issue with 'Fixes #<issue-number>'.");
+              return;
+            }
+
+            const issueNumber = Number(issueMatch[1]);
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber
+            });
+            const labelNames = (issue.data.labels || [])
+              .map(label => typeof label === "string" ? label : label.name);
+            const contributor = context.payload.pull_request.user.login;
+            const isAssigned = (issue.data.assignees || [])
+              .some(assignee => assignee.login === contributor);
+
+            if (!labelNames.includes("nsoc26")) {
+              core.setFailed(`Issue #${issueNumber} must have the nsoc26 label.`);
+            }
+            const levelLabels = ["level1", "level2", "level3"]
+              .filter(level => labelNames.includes(level));
+            if (levelLabels.length !== 1) {
+              core.setFailed(`Issue #${issueNumber} must have exactly one level1, level2, or level3 label.`);
+            }
+            if (!isAssigned) {
+              core.setFailed(`Issue #${issueNumber} is not assigned to @${contributor}.`);
+            }

@@ -1,0 +1,50 @@
+name: Configure NSOC26 labels
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or update NSOC26 labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = [
+              { name: "nsoc26", color: "5A36B6", description: "Nexus Spring of Code 2026 contribution" },
+              { name: "level1", color: "2EA44F", description: "Nexus Spring of Code level 1 issue" },
+              { name: "level2", color: "D29922", description: "Nexus Spring of Code level 2 issue" },
+              { name: "level3", color: "D73A4A", description: "Nexus Spring of Code level 3 issue" }
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name
+                });
+                await github.rest.issues.updateLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ...label
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    ...label
+                  });
+                } else {
+                  throw error;
+                }
+              }
+            }

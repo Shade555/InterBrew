@@ -2,6 +2,11 @@
 
 <!-- Explain what changed and why. Link related issues with "Fixes #123" when applicable. -->
 
+**NSOC26 issue:** <!-- Example: Fixes #123 -->
+
+- [ ] The linked issue is assigned to me.
+- [ ] I used the appropriate `level1`, `level2`, or `level3` label requested for the issue.
+
 ## Type of Change
 
 - [ ] Bug fix
